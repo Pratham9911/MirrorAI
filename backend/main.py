@@ -65,6 +65,25 @@ def process_stream_sync(thread_id, goal, competitors):
                     combined_purpose_text += purpose + "\n"
                     active_runs_db[thread_id]["progress"] = min(95, active_runs_db[thread_id]["progress"] + 5)
                     logs.append({"id": str(uuid.uuid4()), "timestamp": ts, "message": f"Action: {purpose}", "type": "warning"})
+                    
+                    import random
+                    pup_lower = purpose.lower()
+                    if "price" in pup_lower or "cost" in pup_lower or "plan" in pup_lower:
+                        active_runs_db[thread_id]["signals"].insert(0, {
+                            "id": str(uuid.uuid4()), "type": "price", "title": "Pricing Info Detected",
+                            "description": f"Found potential pricing data: {purpose[:60]}...", "time": ts
+                        })
+                    elif "hir" in pup_lower or "job" in pup_lower or "career" in pup_lower:
+                        active_runs_db[thread_id]["signals"].insert(0, {
+                            "id": str(uuid.uuid4()), "type": "hiring", "title": "Hiring Activity",
+                            "description": f"Detected recruitment data: {purpose[:60]}...", "time": ts
+                        })
+                    elif random.random() < 0.3:
+                        stype = random.choice(["feature", "alert"])
+                        active_runs_db[thread_id]["signals"].insert(0, {
+                            "id": str(uuid.uuid4()), "type": stype, "title": f"New {stype.capitalize()} Update",
+                            "description": f"Noticed {stype} update while: {purpose[:60]}...", "time": ts
+                        })
                 elif event.type == "COMPLETE":
                     logs.append({"id": str(uuid.uuid4()), "timestamp": ts, "message": "Analysis run completed.", "type": "success"})
                     active_runs_db[thread_id]["progress"] = 100

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import Link from "next/link"
 import { 
   ChevronLeft,
   ChevronRight,
@@ -85,9 +86,14 @@ export default function ActiveRunsPage() {
       try {
         const res = await fetch('http://localhost:8000/api/runs')
         const data = await res.json()
-        setRuns(data)
-        if (data.length > 0 && !activeThreadId) {
-          setActiveThreadId(data[0].id)
+        const activeData = data.filter((t: ActiveThread) => t.status !== "idle")
+        setRuns(activeData)
+        if (activeData.length > 0) {
+          if (!activeThreadId || !activeData.find((t: ActiveThread) => t.id === activeThreadId)) {
+            setActiveThreadId(activeData[0].id)
+          }
+        } else {
+          setActiveThreadId(null)
         }
         setIsLoading(false)
       } catch (err) {
@@ -111,7 +117,7 @@ export default function ActiveRunsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen flex-col bg-background">
+      <div className="flex h-screen flex-col overflow-hidden bg-background">
         {/* Top Section */}
         <div className="flex flex-1 min-h-0">
           <div className="w-72 border-r border-border p-4 space-y-3">
@@ -133,15 +139,60 @@ export default function ActiveRunsPage() {
           </div>
         </div>
         
-        <div className="h-48 border-t border-border">
-          <SkeletonTerminal lines={5} />
+        <div className="h-40 border-t border-border">
+          <SkeletonTerminal lines={4} />
+        </div>
+      </div>
+    )
+  }
+
+  if (runs.length === 0) {
+    return (
+      <div className="flex h-screen flex-col overflow-hidden bg-background">
+        <div className="flex flex-1 min-h-0">
+          <div className="w-72 border-r border-border p-4 space-y-3">
+            <Skeleton className="h-6 w-32 mb-4" />
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-20 rounded-xl" />
+            ))}
+          </div>
+          
+          <div className="flex-1 p-4 flex flex-col items-center justify-center relative">
+            <div className="absolute inset-4 opacity-30 pointer-events-none">
+              <SkeletonBrowser />
+            </div>
+            <div className="relative z-10 flex flex-col items-center gap-4 bg-card/80 p-8 rounded-2xl border border-border backdrop-blur-sm">
+              <AlertTriangle className="h-10 w-10 text-muted-foreground" />
+              <h2 className="text-xl font-semibold text-foreground">No active runs</h2>
+              <p className="text-sm text-muted-foreground max-w-[250px] text-center">
+                Start a new thread to see live analysis and browser preview.
+              </p>
+              <Link 
+                href="/create-thread" 
+                className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90 px-6 py-2.5 rounded-lg font-medium transition-colors"
+              >
+                Create Thread
+              </Link>
+            </div>
+          </div>
+          
+          <div className="w-80 border-l border-border p-4 space-y-3">
+            <Skeleton className="h-6 w-24 mb-4" />
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonSignal key={i} />
+            ))}
+          </div>
+        </div>
+        
+        <div className="h-40 border-t border-border">
+          <SkeletonTerminal lines={4} />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen flex-col bg-background">
+    <div className="flex h-screen flex-col overflow-hidden bg-background">
       <div className="flex flex-1 min-h-0">
         {/* Left - Thread List */}
         <div className="w-72 border-r border-border bg-card/30 flex flex-col">
@@ -263,7 +314,7 @@ export default function ActiveRunsPage() {
       </div>
 
       {/* Bottom - Terminal Logs */}
-      <div className="h-56 border-t border-border bg-card flex flex-col">
+      <div className="h-40 border-t border-border bg-card flex flex-col">
         <div className="flex items-center justify-between border-b border-border px-4 py-2 bg-muted/30">
           <div className="flex items-center gap-2">
             <Terminal className="h-4 w-4 text-muted-foreground" />
