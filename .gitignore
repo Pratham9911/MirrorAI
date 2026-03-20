@@ -1,0 +1,72 @@
+# =========================
+# ROOT LEVEL
+# =========================
+
+# dependencies
+node_modules/
+
+# env
+.env
+.env*.local
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# misc
+.DS_Store
+*.pem
+
+# build
+build/
+dist/
+
+# =========================
+# FRONTEND (Next.js)
+# =========================
+
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+frontend/*.tsbuildinfo
+
+# =========================
+# BACKEND (Python)
+# =========================
+
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+backend/*.so
+
+backend/build/
+backend/dist/
+backend/eggs/
+backend/.eggs/
+backend/lib/
+backend/lib64/
+backend/parts/
+backend/sdist/
+backend/var/
+backend/wheels/
+
+backend/venv/
+backend/.venv/
+
+# =========================
+# CACHE / TOOLING
+# =========================
+
+.mypy_cache/
+.pytest_cache/
+.pnp
+.pnp.js
+
+# =========================
+# NEXT TYPES
+# =========================
+
+next-env.d.ts
