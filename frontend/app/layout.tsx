@@ -51,9 +51,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
-        <div className="flex min-h-screen">
+        <div className="flex h-screen overflow-hidden">
           <Sidebar />
-          <main className="ml-64 flex-1">
+          <main className="ml-64 flex-1 h-full overflow-hidden">
             {children}
           </main>
         </div>
