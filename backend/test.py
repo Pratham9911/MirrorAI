@@ -1,10 +1,8 @@
 from tinyfish import TinyFish
 import os
-from dotenv import load_dotenv
+    
 
-load_dotenv()
-
-client = TinyFish(api_key=os.getenv("TINYFISH_API_KEY"))
+client = TinyFish(api_key="sk-tinyfish-mbL6A3UGoDIk3wjfO1niyaZDB9r6NAUv")
 
 result = client.agent.run(
     url="https://www.google.com",
