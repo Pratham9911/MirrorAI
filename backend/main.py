@@ -212,6 +212,12 @@ def get_insights():
 def get_insight(tid: str):
     return insights_db.get(tid)
 
+@app.delete("/api/insights/{tid}")
+def delete_insight(tid: str):
+    if tid in insights_db:
+        del insights_db[tid]
+    return {"success": True}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

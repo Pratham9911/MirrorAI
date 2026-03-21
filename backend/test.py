@@ -6,9 +6,9 @@ load_dotenv()
 
 client = TinyFish(api_key=os.getenv("TINYFISH_API_KEY"))
 
-with client.agent.stream(
+result = client.agent.run(
     url="https://www.google.com",
-    goal="Extract the first 1 job postings. For each, get the full title text as shown on the page, the URL it links to, and the posting date. Return as JSON array with keys: title, url, posted.",
-) as stream:
-    for event in stream:
-        print(event)
+    goal="take out prices and product details for the top 2 results for laptops under 50000 INR",
+)
+
+print(result)

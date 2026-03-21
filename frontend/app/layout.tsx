@@ -53,7 +53,7 @@ export default function RootLayout({
       <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
         <div className="flex h-screen overflow-hidden">
           <Sidebar />
-          <main className="ml-64 flex-1 h-full overflow-hidden">
+          <main className="ml-64 flex-1 h-full overflow-y-auto">
             {children}
           </main>
         </div>
