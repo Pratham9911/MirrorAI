@@ -201,11 +201,6 @@ DATA SOURCE 2 — Structured result returned by the research agent (real data)
 {run_result_str}
 
 ═══════════════════════════════════
-DATA SOURCE 3 — Live signals detected during browsing
-═══════════════════════════════════
-{signals_str}
-
-═══════════════════════════════════
 OUTPUT SCHEMA — return EXACTLY this JSON structure, no extra keys
 ═══════════════════════════════════
 {{
