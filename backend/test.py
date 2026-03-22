@@ -2,7 +2,7 @@ from tinyfish import TinyFish
 import os
     
 
-client = TinyFish(api_key="sk-tinyfish-mbL6A3UGoDIk3wjfO1niyaZDB9r6NAUv")
+client = TinyFish(api_key="")
 
 result = client.agent.run(
     url="https://www.google.com",

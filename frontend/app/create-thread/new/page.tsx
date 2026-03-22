@@ -77,11 +77,18 @@ export default function NewThreadPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await fetch('http://localhost:8000/api/threads', {
+      const resp = await fetch('http://localhost:8000/api/threads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, competitors })
       })
+      const newThread = await resp.json()
+      
+      // Save to localStorage
+      const saved = localStorage.getItem('mirror_threads')
+      const threads = saved ? JSON.parse(saved) : []
+      localStorage.setItem('mirror_threads', JSON.stringify([...threads, newThread]))
+      
       router.push("/create-thread")
     } catch (err) {
       console.error(err)

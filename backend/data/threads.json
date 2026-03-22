@@ -1,0 +1,20 @@
+{
+  "ccbb16f8-4179-479b-a0ba-bf43167dc8e6": {
+    "id": "ccbb16f8-4179-479b-a0ba-bf43167dc8e6",
+    "name": "Test Persist",
+    "product": "Mirror",
+    "description": "Testing",
+    "tags": [
+      "tag1"
+    ],
+    "competitors": [
+      {
+        "name": "Comp1",
+        "url": "https://comp1.com"
+      }
+    ],
+    "status": "draft",
+    "createdAt": "2026-03-21",
+    "competitorsCount": 1
+  }
+}

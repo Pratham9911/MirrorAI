@@ -78,9 +78,33 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
   const [report, setReport] = useState<ReportData | null>(null)
 
   useEffect(() => {
-    fetch(`http://localhost:8000/api/insights/${id}`)
-      .then(r => r.json()).then(d => { setReport(d); setIsLoading(false) })
-      .catch(e => { console.error(e); setIsLoading(false) })
+    async function loadData() {
+      // 1. Try localStorage first
+      const saved = localStorage.getItem('mirror_insights')
+      if (saved) {
+        const insights = JSON.parse(saved)
+        const found = insights.find((i: any) => i.id === id)
+        if (found) {
+          setReport(found)
+          setIsLoading(false)
+          return
+        }
+      }
+
+      // 2. Fallback to API
+      try {
+        const res = await fetch(`http://localhost:8000/api/insights/${id}`)
+        if (res.ok) {
+          const data = await res.json()
+          setReport(data)
+        }
+      } catch (e) {
+        console.error("Failed to load insight:", e)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadData()
   }, [id])
 
   if (isLoading) return (
@@ -459,12 +483,14 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                   <Users className="h-5 w-5 text-muted-foreground" />Competitor Landscape
                 </h3>
                 <div className="space-y-3">
-                  {competitorList.map((c, i) => (
+                  {competitorList.map((comp, i) => {
+                    const c = comp as { name: string; url: string; description: string; threat_level?: string; key_differentiator?: string }
+                    return (
                     <div key={i} className="rounded-lg border border-border bg-muted/20 p-3">
                       <div className="flex items-center justify-between mb-1.5 gap-2">
                         <span className="font-medium text-foreground text-sm truncate flex-1">{c.name}</span>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          {"threat_level" in c && c.threat_level && (
+                          {c.threat_level && (
                             <span className={cn("rounded-md px-1.5 py-0.5 text-xs font-bold", getThreatBadge(c.threat_level))}>
                               {c.threat_level}
                             </span>
@@ -475,14 +501,15 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground leading-relaxed mb-1">{c.description}</p>
-                      {"key_differentiator" in c && c.key_differentiator && (
+                      {c.key_differentiator && (
                         <p className="text-xs text-warning mt-1.5 flex items-start gap-1">
                           <Zap className="h-3 w-3 shrink-0 mt-0.5" />
                           {c.key_differentiator}
                         </p>
                       )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}

@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict
+from typing import List, Dict, Optional
 import traceback
 import os
 from dotenv import load_dotenv
@@ -32,12 +32,14 @@ app.add_middleware(
 )
 
 class ThreadCreate(BaseModel):
+    id: Optional[str] = None
     threadName: str
     productName: str
     description: str
     tags: List[str]
     competitors: List[Dict[str, str]]
 
+# Memory-only DBs (as requested: No backend persistence on disk)
 threads_db = {}
 active_runs_db = {}
 insights_db = {}
@@ -65,7 +67,8 @@ def stream_worker(thread_id: str, url: str, stream_goal: str, logs: list, signal
                         "message": "Browser session started", "type": "success"
                     })
                 elif event.type == "STREAMING_URL":
-                    active_runs_db[thread_id]["currentUrl"] = event.streaming_url
+                    if thread_id in active_runs_db:
+                        active_runs_db[thread_id]["currentUrl"] = event.streaming_url
                     logs.append({
                         "id": str(uuid.uuid4()), "timestamp": ts,
                         "message": f"Streaming at {event.streaming_url}", "type": "info"
@@ -73,9 +76,10 @@ def stream_worker(thread_id: str, url: str, stream_goal: str, logs: list, signal
                 elif event.type == "PROGRESS":
                     purpose = str(getattr(event, "purpose", "Navigating..."))
                     combined_purpose_text += purpose + "\n"
-                    active_runs_db[thread_id]["progress"] = min(
-                        90, active_runs_db[thread_id]["progress"] + 4
-                    )
+                    if thread_id in active_runs_db:
+                        active_runs_db[thread_id]["progress"] = min(
+                            90, active_runs_db[thread_id]["progress"] + 4
+                        )
                     logs.append({
                         "id": str(uuid.uuid4()), "timestamp": ts,
                         "message": f"→ {purpose}", "type": "warning"
@@ -84,34 +88,27 @@ def stream_worker(thread_id: str, url: str, stream_goal: str, logs: list, signal
                     pl = purpose.lower()
                     if any(k in pl for k in ["price", "cost", "plan", "pricing", "₹", "$"]):
                         signals.insert(0, {
-                            "id": str(uuid.uuid4()), "type": "price",
-                            "title": "Pricing Info Detected",
+                            "id": str(uuid.uuid4()), "type": "price", "title": "Pricing Info Detected",
                             "description": f"Found pricing data: {purpose[:80]}", "time": ts
                         })
                     elif any(k in pl for k in ["hiring", "job", "career", "recruit"]):
                         signals.insert(0, {
-                            "id": str(uuid.uuid4()), "type": "hiring",
-                            "title": "Hiring Activity Detected",
+                            "id": str(uuid.uuid4()), "type": "hiring", "title": "Hiring Activity Detected",
                             "description": f"Recruitment signal: {purpose[:80]}", "time": ts
                         })
                     elif any(k in pl for k in ["feature", "launch", "new", "update", "release"]):
                         signals.insert(0, {
-                            "id": str(uuid.uuid4()), "type": "feature",
-                            "title": "Feature / Launch Detected",
+                            "id": str(uuid.uuid4()), "type": "feature", "title": "Feature / Launch Detected",
                             "description": f"Product update signal: {purpose[:80]}", "time": ts
                         })
-                    elif random.random() < 0.2:
-                        signals.insert(0, {
-                            "id": str(uuid.uuid4()), "type": "alert",
-                            "title": "Activity Alert",
-                            "description": f"Notable activity: {purpose[:80]}", "time": ts
-                        })
+
                 elif event.type == "COMPLETE":
                     logs.append({
                         "id": str(uuid.uuid4()), "timestamp": ts,
                         "message": "Stream analysis complete ✓", "type": "success"
                     })
-                    active_runs_db[thread_id]["progress"] = 95
+                    if thread_id in active_runs_db:
+                        active_runs_db[thread_id]["progress"] = 95
 
     except Exception as e:
         ts = datetime.now().strftime("%H:%M:%S")
@@ -153,15 +150,11 @@ def build_insight_with_groq(
     signals: list
 ) -> dict:
     """
-    Calls Groq with all available data — stream activity log, structured run
-    result, live-detected signals, tags — to generate a comprehensive Mirror
-    analysis report.
+    Calls Groq with all available data to generate a Mirror report.
     """
     if not groq_client:
-        print("[build_insight] Groq not available, returning minimal insight")
         return {}
 
-    # Serialise what we have for the prompt
     run_result_str = json.dumps(run_result, indent=2) if run_result else "Not available"
     signals_str = json.dumps(signals[:20], indent=2) if signals else "None detected"
     tags_str = ", ".join(thread.get("tags", []))
@@ -179,13 +172,13 @@ def build_insight_with_groq(
 
     prompt = f"""
 We just ran a live competitor analysis for the product below.
-You have THREE real data sources to work with — use ALL of them.
+You have TWO real data sources to work with — use ALL of them.
 
 ═══════════════════════════════════
 PRODUCT BEING ANALYSED
 ═══════════════════════════════════
-Name       : {thread['product']}
-Thread     : {thread['name']}
+Name       : {thread['productName']}
+Thread     : {thread['threadName']}
 Description: {thread['description']}
 Focus Tags : {tags_str}
 Competitors: {competitors_str}
@@ -201,68 +194,50 @@ DATA SOURCE 2 — Structured result returned by the research agent (real data)
 {run_result_str}
 
 ═══════════════════════════════════
-OUTPUT SCHEMA — return EXACTLY this JSON structure, no extra keys
+SCORING RULES (0-100)
 ═══════════════════════════════════
+1. product_strength (0-25)
+2. market_gap (0-25)
+3. competitor_threat (0-25)
+4. data_certainty (0-25)
+Final score = sum of all four sub-scores.
+
+OUTPUT SCHEMA (JSON Only):
 {{
-  "score": <integer 0-100 — honest competitiveness score for {thread['product']}>,
-  "score_rationale": "<1-2 sentences explaining the score>",
-
-  "strengths": [
-    "<specific strength of {thread['product']} vs competitors — grounded in data>",
-    ...  (max 5)
-  ],
-
-  "weaknesses": [
-    "<specific weakness or gap — be honest, use real data>",
-    ...  (max 5)
-  ],
-
+  "score": <0-100>,
+  "score_breakdown": {{
+    "product_strength": <0-25>, "market_gap": <0-25>, "competitor_threat": <0-25>, "data_certainty": <0-25>,
+    "rationale": "<reasoning>"
+  }},
+  "executive_summary": "<summary>",
+  "strengths": ["<strength>", ...],
+  "weaknesses": ["<weakness>", ...],
   "competitor_landscape": [
-    {{
-      "name": "<competitor name>",
-      "url": "<competitor url>",
-      "description": "<what they do and how they compare>",
-      "threat_level": "<Low | Medium | High>"
-    }}
-    ...
+    {{ "name": "<name>", "url": "<url>", "description": "<desc>", "threat_level": "<Low | Medium | High>", "key_differentiator": "<diff>" }}
   ],
-
+  "pricing_comparison": [
+    {{ "company": "<name>", "plan": "<plan>", "price": "<price>", "highlights": "<desc>" }}
+  ],
+  "feature_matrix": [
+    {{ "feature": "<name>", "our_product": "<Yes | No | Partial>", "competitors_status": "<desc>" }}
+  ],
+  "customer_reviews": [
+    {{ "company": "<name>", "sentiment": "<Positive | Negative>", "quote": "<quote>", "source": "<source>" }}
+  ],
+  "market_positioning": "<desc>",
   "signals": [
-    {{
-      "type": "<feature | price | hiring | funding | alert>",
-      "title": "<short signal title>",
-      "description": "<detailed description — what it means for {thread['product']}>",
-      "date": "<YYYY-MM-DD or 'recent'>"
-    }}
-    ...  (include all meaningful signals, max 10)
+    {{ "type": "<type>", "title": "<title>", "company": "<name>", "description": "<desc>", "date": "<YYYY-MM-DD>" }}
   ],
-
-  "customer_reviews_summary": "<synthesise any review or user sentiment data found — what customers are saying about the competitors and what gaps that reveals for {thread['product']}>",
-
-  "market_positioning": "<where does {thread['product']} sit in the market — premium, budget, niche, etc. vs competitors>",
-
-  "predictions": [
-    "<data-driven prediction about competitor moves or market shifts>",
-    ...  (max 4)
+  "risk_assessment": [
+    {{ "risk": "<risk>", "severity": "<severity>", "mitigation": "<mitigation>" }}
   ],
-
+  "customer_reviews_summary": "<summary>",
+  "predictions": ["<prediction>", ...],
   "recommendations": [
-    "<specific, actionable recommendation for {thread['product']} team>",
-    ...  (max 5)
+    {{ "action": "<action>", "priority": "<High | Medium | Low>", "rationale": "<rationale>" }}
   ],
-
-  "sources": [
-    {{
-      "name": "<source/site name>",
-      "url": "<url found during research>"
-    }}
-    ...
-  ]
+  "sources": [ {{ "name": "<name>", "url": "<url>" }} ]
 }}
-
-Be highly specific. Reference actual product names, prices, features from the data.
-Do NOT make up data that is not in the sources above.
-Return ONLY the JSON object.
 """
 
     try:
@@ -273,153 +248,61 @@ Return ONLY the JSON object.
                 {"role": "user", "content": prompt}
             ],
             temperature=0.15,
-            max_tokens=4096,
+            max_tokens=6000,
             response_format={"type": "json_object"}
         )
-        result_text = completion.choices[0].message.content
-        return json.loads(result_text)
+        return json.loads(completion.choices[0].message.content)
     except Exception as e:
         print(f"[build_insight] Groq error: {e}")
-        traceback.print_exc()
         return {}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# MAIN ORCHESTRATOR  — runs stream + run in parallel, then builds insight
+# MAIN ORCHESTRATOR
 # ─────────────────────────────────────────────────────────────────────────────
 def process_thread(thread_id: str, thread: dict):
     """
-    Orchestrates the full pipeline:
-    1. Start stream() and run() in parallel threads
-    2. Wait for both to finish
-    3. Feed all data to Groq to generate the insight
-    4. Save insight and update statuses
+    Runs both agents, builds report, saves to memory-only insights_db.
     """
     url = thread["competitors"][0]["url"] if thread.get("competitors") else "https://www.google.com"
     logs  = active_runs_db[thread_id]["logs"]
     signals = active_runs_db[thread_id]["signals"]
 
-    comps_str = ", ".join(
-        f"{c.get('name', c['url'])}" for c in thread.get("competitors", [])
-    )
+    comps_str = ", ".join([f"{c['name']}" for c in thread.get("competitors", [])])
     tags_str = ", ".join(thread.get("tags", []))
 
-    # ── Goal for the stream agent (simple — just to drive the browser visually)
-    stream_goal = (
-        f"Browse and analyse the competitor website for '{thread['product']}'. "
-        f"Focus on: {tags_str}. "
-        f"Navigate pricing pages, feature pages, and any review sections you can find."
-    )
+    stream_goal = f"Quickly browse {comps_str} for {thread['productName']} and check: {tags_str}."
+    run_goal = f"Deeply analyze {comps_str}. Extract and check: {tags_str} and reviews for {thread['productName']} analysis."
 
-    # ── Goal for the run agent (rich — extract real structured data)
-    run_goal = (
-        f"You are doing competitive intelligence for a product called '{thread['product']}'. "
-        f"Description: {thread['description']}. "
-        f"Focus areas: {tags_str}. "
-        f"Competitors to analyse: {comps_str} (URLs: {', '.join(c['url'] for c in thread.get('competitors', []))}). "
-        f"Extract: pricing tiers and exact prices, key features with details, "
-        f"customer reviews and ratings (include specific quotes if available), "
-        f"hiring/funding signals, recent product launches or updates, "
-        f"market positioning, and any weaknesses mentioned by users. "
-        f"Return all findings as structured JSON."
-    )
+    logs.append({"id": str(uuid.uuid4()), "timestamp": datetime.now().strftime("%H:%M:%S"), "message": "Starting Analysis...", "type": "info"})
 
-    logs.append({
-        "id": str(uuid.uuid4()),
-        "timestamp": datetime.now().strftime("%H:%M:%S"),
-        "message": "Starting analysis — launching stream agent and research agent in parallel...",
-        "type": "info"
-    })
+    s_res = {"text": ""}
+    r_res = {"data": {}}
 
-    # Results containers
-    stream_result_container = {"text": ""}
-    run_result_container    = {"data": {}}
+    def do_stream(): s_res["text"] = stream_worker(thread_id, url, stream_goal, logs, signals)
+    def do_run(): r_res["data"] = run_worker(url, run_goal)
 
-    # ── Run both calls in parallel threads
-    def do_stream():
-        text = stream_worker(thread_id, url, stream_goal, logs, signals)
-        stream_result_container["text"] = text
+    t1 = threading.Thread(target=do_stream)
+    t2 = threading.Thread(target=do_run)
+    t1.start(); t2.start()
+    t1.join(); t2.join()
 
-    def do_run():
-        ts = datetime.now().strftime("%H:%M:%S")
-        logs.append({
-            "id": str(uuid.uuid4()), "timestamp": ts,
-            "message": "Research agent started (collecting structured data)...", "type": "info"
-        })
-        data = run_worker(url, run_goal)
-        run_result_container["data"] = data
-        ts2 = datetime.now().strftime("%H:%M:%S")
-        if data:
-            logs.append({
-                "id": str(uuid.uuid4()), "timestamp": ts2,
-                "message": f"Research agent completed — {len(json.dumps(data))} bytes of data collected ✓",
-                "type": "success"
-            })
-        else:
-            logs.append({
-                "id": str(uuid.uuid4()), "timestamp": ts2,
-                "message": "Research agent returned no structured data — using stream log only",
-                "type": "warning"
-            })
-
-    t_stream = threading.Thread(target=do_stream)
-    t_run    = threading.Thread(target=do_run)
-
-    t_stream.start()
-    t_run.start()
-
-    # Wait for both
-    t_stream.join()
-    t_run.join()
-
-    logs.append({
-        "id": str(uuid.uuid4()),
-        "timestamp": datetime.now().strftime("%H:%M:%S"),
-        "message": "Both agents finished — building Mirror insight report...",
-        "type": "info"
-    })
-
-    # ── Build insight from all collected data
     try:
-        report_data = build_insight_with_groq(
-            thread=thread,
-            combined_purpose_text=stream_result_container["text"],
-            run_result=run_result_container["data"],
-            signals=signals
-        )
-
-        # Attach metadata
-        report_data["id"]          = thread_id
-        report_data["name"]        = thread["name"]
-        report_data["product"]     = thread["product"]
-        report_data["description"] = thread.get("description", "")
-        report_data["completedAt"] = datetime.now().strftime("%Y-%m-%d")
-        report_data["tags"]        = thread.get("tags", [])
-        report_data["competitors_input"] = thread.get("competitors", [])
-
-        insights_db[thread_id] = report_data
-
-        threads_db[thread_id]["status"]     = "completed"
-        active_runs_db[thread_id]["status"] = "idle"
-        active_runs_db[thread_id]["progress"] = 100
-
-        logs.append({
-            "id": str(uuid.uuid4()),
-            "timestamp": datetime.now().strftime("%H:%M:%S"),
-            "message": "Mirror analysis complete — report ready in Insights ✓",
-            "type": "success"
+        report = build_insight_with_groq(thread, s_res["text"], r_res["data"], signals)
+        report.update({
+            "id": thread_id, "name": thread["threadName"], "product": thread["productName"],
+            "description": thread["description"], "completedAt": datetime.now().strftime("%Y-%m-%d"),
+            "tags": thread["tags"]
         })
-
+        insights_db[thread_id] = report
+        if thread_id in threads_db: threads_db[thread_id]["status"] = "completed"
+        if thread_id in active_runs_db:
+            active_runs_db[thread_id]["status"] = "idle"
+            active_runs_db[thread_id]["progress"] = 100
+        logs.append({"id": str(uuid.uuid4()), "timestamp": datetime.now().strftime("%H:%M:%S"), "message": "Analysis Complete ✓", "type": "success"})
     except Exception as e:
-        print(f"[process_thread] insight build failed: {e}")
         traceback.print_exc()
-        logs.append({
-            "id": str(uuid.uuid4()),
-            "timestamp": datetime.now().strftime("%H:%M:%S"),
-            "message": f"Insight build error: {str(e)}", "type": "error"
-        })
-        threads_db[thread_id]["status"]     = "paused"
-        active_runs_db[thread_id]["status"] = "paused"
+        if thread_id in threads_db: threads_db[thread_id]["status"] = "paused"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -433,66 +316,55 @@ def get_threads():
 @app.post("/api/threads")
 def create_thread(data: ThreadCreate):
     tid = str(uuid.uuid4())
-    t = {
-        "id": tid,
-        "name": data.threadName,
-        "product": data.productName,
-        "description": data.description,
-        "tags": data.tags,
-        "competitors": data.competitors,
-        "status": "draft",
-        "createdAt": datetime.now().strftime("%Y-%m-%d"),
-        "competitorsCount": len(data.competitors)
-    }
+    t = data.model_dump()
+    t["id"] = tid
+    t["status"] = "draft"
+    t["createdAt"] = datetime.now().strftime("%Y-%m-%d")
+    t["competitorsCount"] = len(data.competitors)
+    # Important: In-Memory only
     threads_db[tid] = t
     return t
 
 @app.delete("/api/threads/{tid}")
 def delete_thread(tid: str):
-    if tid in threads_db:
-        del threads_db[tid]
+    if tid in threads_db: del threads_db[tid]
     return {"success": True}
 
 @app.post("/api/threads/{tid}/run")
-def run_thread(tid: str):
-    if tid not in threads_db:
-        return {"error": "not found"}
+def run_thread(tid: str, thread_data: Optional[ThreadCreate] = None):
+    # If backend restarted, frontend can re-provide the thread context
+    if tid not in threads_db and thread_data:
+        t = thread_data.model_dump()
+        t["id"] = tid
+        t["status"] = "running"
+        t["createdAt"] = datetime.now().strftime("%Y-%m-%d")
+        t["competitorsCount"] = len(t["competitors"])
+        threads_db[tid] = t
+    elif tid in threads_db:
+        threads_db[tid]["status"] = "running"
+    else:
+        return {"error": "Thread not found"}
 
     t = threads_db[tid]
-    threads_db[tid]["status"] = "running"
-
     active_runs_db[tid] = {
-        "id": tid,
-        "name": t["name"],
-        "status": "running",
-        "currentUrl": "Initializing...",
-        "progress": 3,
-        "logs": [],
-        "signals": []
+        "id": tid, "name": t["threadName"], "status": "running",
+        "currentUrl": "Initializing...", "progress": 3, "logs": [], "signals": []
     }
-
-    # Fire the full pipeline in a background thread
-    worker = threading.Thread(target=process_thread, args=(tid, t), daemon=True)
-    worker.start()
-
+    threading.Thread(target=process_thread, args=(tid, t), daemon=True).start()
     return {"success": True}
 
 @app.get("/api/runs")
-def get_runs():
-    return list(active_runs_db.values())
+def get_runs(): return list(active_runs_db.values())
 
 @app.get("/api/insights")
-def get_insights():
-    return list(insights_db.values())
+def get_insights(): return list(insights_db.values())
 
 @app.get("/api/insights/{tid}")
-def get_insight(tid: str):
-    return insights_db.get(tid)
+def get_insight(tid: str): return insights_db.get(tid)
 
 @app.delete("/api/insights/{tid}")
 def delete_insight(tid: str):
-    if tid in insights_db:
-        del insights_db[tid]
+    if tid in insights_db: del insights_db[tid]
     return {"success": True}
 
 if __name__ == "__main__":

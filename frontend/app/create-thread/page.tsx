@@ -103,35 +103,69 @@ export default function CreateThreadPage() {
   const [searchQuery, setSearchQuery] = useState("")
 
   useEffect(() => {
+    // 1. Load from localStorage
+    const saved = localStorage.getItem('mirror_threads')
+    const localThreads = saved ? JSON.parse(saved) : []
+    
+    // 2. Try to sync with backend (only for transient statuses like "running")
     fetch('http://localhost:8000/api/threads')
       .then(r => r.json())
-      .then(data => {
-        setThreads(data)
+      .then(apiThreads => {
+        // Normalize helper
+        const normalize = (t: any) => ({
+          ...t,
+          name: t.name || t.threadName || "Untitled",
+          product: t.product || t.productName || "Unknown"
+        })
+
+        const normalizedLocal = localThreads.map(normalize)
+        const normalizedApi = apiThreads.map(normalize)
+
+        const synced = normalizedLocal.map((t: Thread) => {
+          const apiMatch = normalizedApi.find((at: any) => at.id === t.id)
+          return apiMatch ? { ...t, status: apiMatch.status } : t
+        })
+        setThreads(synced)
+        localStorage.setItem('mirror_threads', JSON.stringify(synced))
         setIsLoading(false)
       })
-      .catch(e => {
-        console.error(e)
-        setThreads([])
+      .catch(() => {
+        setThreads(localThreads)
         setIsLoading(false)
       })
   }, [])
 
-  const filteredThreads = threads.filter(thread => 
-    thread.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    thread.product.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredThreads = threads.filter(thread => {
+    const name = (thread.name || (thread as any).threadName || "").toLowerCase()
+    const product = (thread.product || (thread as any).productName || "").toLowerCase()
+    const query = searchQuery.toLowerCase()
+    return name.includes(query) || product.includes(query)
+  })
 
   const handleDelete = async (id: string) => {
-    await fetch(`http://localhost:8000/api/threads/${id}`, { method: 'DELETE' })
-    setThreads(threads.filter(t => t.id !== id))
+    const updated = threads.filter(t => t.id !== id)
+    setThreads(updated)
+    localStorage.setItem('mirror_threads', JSON.stringify(updated))
+    // Also tell backend (best effort)
+    fetch(`http://localhost:8000/api/threads/${id}`, { method: 'DELETE' }).catch(() => {})
   }
 
   const handleRun = async (id: string) => {
     try {
-      await fetch(`http://localhost:8000/api/threads/${id}/run`, { method: 'POST' })
-      setThreads(threads.map(t => 
+      // Find full thread data to send to backend (stateless runner)
+      const threadToRun = JSON.parse(localStorage.getItem('mirror_threads') || '[]').find((t: any) => t.id === id)
+      
+      await fetch(`http://localhost:8000/api/threads/${id}/run`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(threadToRun)
+      })
+      
+      const updated = threads.map(t => 
         t.id === id ? { ...t, status: "running" as const } : t
-      ))
+      )
+      setThreads(updated)
+      localStorage.setItem('mirror_threads', JSON.stringify(updated))
     } catch (e) { console.error(e) }
   }
 

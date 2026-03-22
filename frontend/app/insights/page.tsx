@@ -44,18 +44,28 @@ export default function InsightsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
+    // 1. Load from localStorage
+    const saved = localStorage.getItem('mirror_insights')
+    const localInsights = saved ? JSON.parse(saved) : []
+    
+    // 2. Fetch from backend to see if any NEW ones finished
     fetch('http://localhost:8000/api/insights')
       .then(res => res.json())
-      .then(data => {
-        setThreads(data.map((r: any) => ({
+      .then(apiInsights => {
+        // Merge: any insight in API that isn't in localInsights becomes local
+        const newOnes = apiInsights.filter((ai: any) => !localInsights.find((li: any) => li.id === ai.id))
+        const combined = [...localInsights, ...newOnes]
+        
+        setThreads(combined.map((r: any) => ({
           ...r,
           signalsDetected: r.signals?.length || 0,
           competitorsAnalyzed: r.competitors?.length || 0,
         })))
+        localStorage.setItem('mirror_insights', JSON.stringify(combined))
         setIsLoading(false)
       })
-      .catch(e => {
-        console.error(e)
+      .catch(() => {
+        setThreads(localInsights)
         setIsLoading(false)
       })
   }, [])
@@ -63,8 +73,16 @@ export default function InsightsPage() {
   async function handleDelete(id: string) {
     setDeletingId(id)
     try {
-      await fetch(`http://localhost:8000/api/insights/${id}`, { method: "DELETE" })
-      // Optimistically remove from UI
+      // Remove from localStorage
+      const saved = localStorage.getItem('mirror_insights')
+      if (saved) {
+        const insights = JSON.parse(saved)
+        localStorage.setItem('mirror_insights', JSON.stringify(insights.filter((i: any) => i.id !== id)))
+      }
+      
+      // Also tell backend (best effort)
+      await fetch(`http://localhost:8000/api/insights/${id}`, { method: "DELETE" }).catch(() => {})
+      
       setThreads(prev => prev.filter(t => t.id !== id))
     } catch (e) {
       console.error(e)
