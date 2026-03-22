@@ -33,11 +33,23 @@ app.add_middleware(
 
 class ThreadCreate(BaseModel):
     id: Optional[str] = None
-    threadName: str
-    productName: str
-    description: str
-    tags: List[str]
-    competitors: List[Dict[str, str]]
+    threadName: Optional[str] = None
+    productName: Optional[str] = None
+    name: Optional[str] = None
+    product: Optional[str] = None
+    description: str = ""
+    tags: List[str] = []
+    competitors: List[Dict[str, str]] = []
+    # Accept and ignore extra fields from localStorage
+    model_config = {"extra": "allow"}
+
+def _normalize_thread(t: dict) -> dict:
+    """Ensures both 'threadName'/'productName' AND 'name'/'product' exist."""
+    t["threadName"] = t.get("threadName") or t.get("name") or "Untitled"
+    t["productName"] = t.get("productName") or t.get("product") or "Unknown"
+    t["name"] = t["threadName"]
+    t["product"] = t["productName"]
+    return t
 
 # Memory-only DBs (as requested: No backend persistence on disk)
 threads_db = {}
@@ -271,8 +283,8 @@ def process_thread(thread_id: str, thread: dict):
     comps_str = ", ".join([f"{c['name']}" for c in thread.get("competitors", [])])
     tags_str = ", ".join(thread.get("tags", []))
 
-    stream_goal = f"Quickly browse {comps_str} for {thread['productName']} and check: {tags_str}."
-    run_goal = f"Deeply analyze {comps_str}. Extract and check: {tags_str} and reviews for {thread['productName']} analysis."
+    stream_goal = f"Quickly browse competitors {comps_str} for {thread['productName']} and check: {tags_str}."
+    run_goal = f"Deeply analyze competitors {comps_str}. Extract and check: {tags_str} and reviews for {thread['productName']} analysis."
 
     logs.append({"id": str(uuid.uuid4()), "timestamp": datetime.now().strftime("%H:%M:%S"), "message": "Starting Analysis...", "type": "info"})
 
@@ -321,7 +333,7 @@ def create_thread(data: ThreadCreate):
     t["status"] = "draft"
     t["createdAt"] = datetime.now().strftime("%Y-%m-%d")
     t["competitorsCount"] = len(data.competitors)
-    # Important: In-Memory only
+    t = _normalize_thread(t)
     threads_db[tid] = t
     return t
 
@@ -338,10 +350,12 @@ def run_thread(tid: str, thread_data: Optional[ThreadCreate] = None):
         t["id"] = tid
         t["status"] = "running"
         t["createdAt"] = datetime.now().strftime("%Y-%m-%d")
-        t["competitorsCount"] = len(t["competitors"])
+        t["competitorsCount"] = len(t.get("competitors", []))
+        t = _normalize_thread(t)
         threads_db[tid] = t
     elif tid in threads_db:
         threads_db[tid]["status"] = "running"
+        threads_db[tid] = _normalize_thread(threads_db[tid])
     else:
         return {"error": "Thread not found"}
 

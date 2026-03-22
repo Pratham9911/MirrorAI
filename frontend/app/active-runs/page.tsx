@@ -87,6 +87,38 @@ export default function ActiveRunsPage() {
       try {
         const res = await fetch('http://localhost:8000/api/runs')
         const data = await res.json()
+        
+        // Check for newly completed runs (status "idle") and sync to localStorage
+        for (const run of data) {
+          if (run.status === "idle") {
+            // 1. Fetch the completed insight and save to localStorage
+            try {
+              const insightRes = await fetch(`http://localhost:8000/api/insights/${run.id}`)
+              if (insightRes.ok) {
+                const insight = await insightRes.json()
+                if (insight) {
+                  const saved = localStorage.getItem('mirror_insights')
+                  const existing = saved ? JSON.parse(saved) : []
+                  if (!existing.find((i: any) => i.id === insight.id)) {
+                    existing.push(insight)
+                    localStorage.setItem('mirror_insights', JSON.stringify(existing))
+                  }
+                }
+              }
+            } catch {}
+
+            // 2. Update thread status in localStorage from "running" to "completed"
+            const savedThreads = localStorage.getItem('mirror_threads')
+            if (savedThreads) {
+              const threads = JSON.parse(savedThreads)
+              const updated = threads.map((t: any) => 
+                t.id === run.id ? { ...t, status: "completed" } : t
+              )
+              localStorage.setItem('mirror_threads', JSON.stringify(updated))
+            }
+          }
+        }
+
         const activeData = data.filter((t: ActiveThread) => t.status !== "idle")
         setRuns(activeData)
         if (activeData.length > 0) {
