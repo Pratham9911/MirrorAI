@@ -7,7 +7,8 @@ import {
   PlusCircle, 
   Activity, 
   BarChart3,
-  Hexagon
+  Hexagon,
+  Radar
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -31,6 +32,11 @@ const navItems = [
     name: "Insights",
     href: "/insights",
     icon: BarChart3,
+  },
+  {
+    name: "Monitor",
+    href: "/monitor",
+    icon: Radar,
   },
 ]
 
