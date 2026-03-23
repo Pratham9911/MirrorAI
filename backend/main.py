@@ -501,9 +501,10 @@ def _monitor_worker(monitor_id: str):
     tags_str = ", ".join(cfg.get("tags", []))
     track = cfg.get("trackWhat", "general content")
     goal = (
-        f"Visit {url} and extract ALL visible data. "
-        f"Focus on: {tags_str or 'everything'}. Track: {track}. "
-        f"Return structured JSON with mentioned Items"
+        f"MINIMAL WORK: Only focus on tracking: '{track}'. "
+        f"Ignore all unrelated site content to save processing power. "
+        f"Extract EXACTLY what is needed to observe changes in '{track}' at {url}. "
+        f"Return the data in a clean, structured JSON format."
     )
 
     while not stop_event.is_set():
@@ -530,19 +531,21 @@ def _monitor_worker(monitor_id: str):
             "runNumber": mon["runCount"],
         }
 
+        # 3. Store run (Keep full history now)
         mon["runs"].append(run_entry)
-        if len(mon["runs"]) > 2:
-            mon["runs"] = mon["runs"][-2:]
         mon["lastRunAt"] = ts
 
-        # 3. If 2 runs, generate diff insights
-        if len(mon["runs"]) == 2:
-            diff = _generate_diff_insights(mon["runs"][0], mon["runs"][1], url)
+        # 4. If at least 2 runs exist, generate diff between the MOST RECENT two
+        if len(mon["runs"]) >= 2:
+            prev_run = mon["runs"][-2]
+            curr_run = mon["runs"][-1]
+            diff = _generate_diff_insights(prev_run, curr_run, url)
             mon["insights"] = diff
             print(f"[monitor:{monitor_id[:8]}] Changes: {diff.get('summary', 'N/A')}")
 
-        # 4. Wait
-        if stop_event.wait(timeout=cfg.get("intervalSeconds", 60)):
+        # 5. Wait for next interval
+        interval = cfg.get("intervalSeconds", 60)
+        if stop_event.wait(timeout=interval):
             break
 
     mon["status"] = "stopped"
@@ -596,10 +599,7 @@ def start_monitor_session(mid: str):
     stop_evt = threading.Event()
     mon["_stop_event"] = stop_evt
     mon["status"] = "running"
-    mon["runs"] = []
-    mon["insights"] = {}
-    mon["runCount"] = 0
-
+    # Keep historical data!
     threading.Thread(target=_monitor_worker, args=(mid,), daemon=True).start()
     return {"success": True}
 
@@ -611,6 +611,7 @@ def stop_monitor_session(mid: str):
         return {"error": "not found"}
     if mon.get("_stop_event"):
         mon["_stop_event"].set()
+        mon["_stop_event"] = None  # Clear it so it's not 'done' the next time we start
     mon["status"] = "stopped"
     return {"success": True}
 

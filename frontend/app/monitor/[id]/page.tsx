@@ -109,9 +109,19 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
 
   const handleStart = async () => {
     await fetch(`http://localhost:8000/api/monitors/${id}/start`, { method: "POST" }).catch(() => {})
+    const saved = localStorage.getItem('mirror_monitors')
+    if (saved) {
+      const list = JSON.parse(saved)
+      localStorage.setItem('mirror_monitors', JSON.stringify(list.map((m: any) => m.id === id ? { ...m, status: "running" } : m)))
+    }
   }
   const handleStop = async () => {
     await fetch(`http://localhost:8000/api/monitors/${id}/stop`, { method: "POST" }).catch(() => {})
+    const saved = localStorage.getItem('mirror_monitors')
+    if (saved) {
+      const list = JSON.parse(saved)
+      localStorage.setItem('mirror_monitors', JSON.stringify(list.map((m: any) => m.id === id ? { ...m, status: "stopped" } : m)))
+    }
   }
 
   if (isLoading || !monitor) {
