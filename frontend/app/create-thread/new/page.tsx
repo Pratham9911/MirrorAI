@@ -151,7 +151,7 @@ export default function NewThreadPage() {
                     type="text"
                     value={formData.productName}
                     onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                    placeholder="e.g., Cortex Pro"
+                    placeholder="e.g., MirrorAI Pro"
                     className="h-11 w-full rounded-xl border border-border bg-muted/30 px-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-muted-foreground focus:outline-none focus:ring-1 focus:ring-muted-foreground transition-all"
                   />
                 </div>

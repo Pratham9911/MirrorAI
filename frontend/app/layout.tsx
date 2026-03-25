@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Cortex | AI Command Center',
+  title: 'MirrorAI | AI Command Center',
   description: 'Real-time AI agent monitoring and competitor intelligence platform',
   generator: 'v0.app',
   icons: {

@@ -35,7 +35,7 @@ const mockThreads: Thread[] = [
   {
     id: "1",
     name: "Q1 Market Analysis",
-    product: "Cortex Pro",
+    product: "MirrorAI Pro",
     status: "completed",
     createdAt: "2024-03-15",
     competitorsCount: 5
@@ -59,7 +59,7 @@ const mockThreads: Thread[] = [
   {
     id: "4",
     name: "Competitor Website Monitoring",
-    product: "Cortex Pro",
+    product: "MirrorAI Pro",
     status: "running",
     createdAt: "2024-03-20",
     competitorsCount: 12

@@ -273,9 +273,7 @@ OUTPUT SCHEMA (JSON Only):
 # MAIN ORCHESTRATOR
 # ─────────────────────────────────────────────────────────────────────────────
 def process_thread(thread_id: str, thread: dict):
-    """
-    Runs both agents, builds report, saves to memory-only insights_db.
-    """
+    print(f"[backend] Starting process_thread for {thread_id}")
     url = thread["competitors"][0]["url"] if thread.get("competitors") else "https://www.google.com"
     logs  = active_runs_db[thread_id]["logs"]
     signals = active_runs_db[thread_id]["signals"]
@@ -291,14 +289,21 @@ def process_thread(thread_id: str, thread: dict):
     s_res = {"text": ""}
     r_res = {"data": {}}
 
-    def do_stream(): s_res["text"] = stream_worker(thread_id, url, stream_goal, logs, signals)
-    def do_run(): r_res["data"] = run_worker(url, run_goal)
+    def do_stream(): 
+        print(f"[backend] Thread {thread_id}: Starting stream worker")
+        s_res["text"] = stream_worker(thread_id, url, stream_goal, logs, signals)
+        print(f"[backend] Thread {thread_id}: Stream worker finished")
 
-    t1 = threading.Thread(target=do_stream)
-    t2 = threading.Thread(target=do_run)
-    t1.start(); t2.start()
-    t1.join(); t2.join()
+    def do_run(): 
+        print(f"[backend] Thread {thread_id}: Starting run worker")
+        r_res["data"] = run_worker(url, run_goal)
+        print(f"[backend] Thread {thread_id}: Run worker finished")
 
+    # Run sequentially to ensure stable log streaming and avoid agent concurrency locks
+    do_stream()
+    do_run()
+
+    print(f"[backend] Thread {thread_id}: Workers finished, building report")
     try:
         report = build_insight_with_groq(thread, s_res["text"], r_res["data"], signals)
         report.update({
@@ -312,7 +317,9 @@ def process_thread(thread_id: str, thread: dict):
             active_runs_db[thread_id]["status"] = "idle"
             active_runs_db[thread_id]["progress"] = 100
         logs.append({"id": str(uuid.uuid4()), "timestamp": datetime.now().strftime("%H:%M:%S"), "message": "Analysis Complete ✓", "type": "success"})
+        print(f"[backend] Thread {thread_id}: Processing finished successfully")
     except Exception as e:
+        print(f"[backend] Thread {thread_id}: Error building report: {e}")
         traceback.print_exc()
         if thread_id in threads_db: threads_db[thread_id]["status"] = "paused"
 
@@ -359,6 +366,7 @@ def run_thread(tid: str, thread_data: Optional[ThreadCreate] = None):
     else:
         return {"error": "Thread not found"}
 
+    print(f"[backend] run_thread called for ID {tid}")
     t = threads_db[tid]
     active_runs_db[tid] = {
         "id": tid, "name": t["threadName"], "status": "running",

@@ -51,7 +51,7 @@ export function Sidebar() {
           <Hexagon className="h-5 w-5 text-background" strokeWidth={2.5} />
         </div>
         <span className="text-xl font-semibold tracking-tight text-foreground">
-          Cortex
+          MirrorAI
         </span>
       </div>
 

@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Pure black theme for Cortex AI Command Center */
+  /* Pure black theme for MirrorAI AI Command Center */
   --background: oklch(0 0 0);
   --foreground: oklch(1 0 0);
   --card: oklch(0.06 0 0);
