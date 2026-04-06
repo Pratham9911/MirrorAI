@@ -1,12 +1,19 @@
 from tinyfish import TinyFish
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
     
 
-client = TinyFish(api_key="")
+client = TinyFish(api_key="sk-tinyfish-eUDfTco1Y1EIhH1ZUUmn44TfazGTtteK")
 
-result = client.agent.run(
-    url="https://www.google.com",
-    goal="take out prices and product details for the top 2 results for laptops under 50000 INR",
-)
 
-print(result)
+with client.agent.stream(
+    url="https://scrapeme.live/shop",
+    goal="Extract the first 2 product names and prices. Return ONLY valid JSON.",
+) as stream:
+    for event in stream:
+        print(event)
+
+        if event.type.name == "COMPLETE":
+            print("\nFINAL RESULT JSON:\n", event.result_json)
