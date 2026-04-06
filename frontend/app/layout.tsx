@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, JetBrains_Mono } from 'next/font/google'
+import { Inter, JetBrains_Mono, Instrument_Sans, Instrument_Serif } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
-import { Sidebar } from '@/components/sidebar'
 import './globals.css'
 
 const inter = Inter({ 
@@ -14,10 +13,20 @@ const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains"
 })
 
+const instrumentSans = Instrument_Sans({
+  subsets: ["latin"],
+  variable: "--font-instrument"
+})
+
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-instrument-serif"
+})
+
 export const metadata: Metadata = {
-  title: 'MirrorAI | AI Command Center',
-  description: 'Real-time AI agent monitoring and competitor intelligence platform',
-  generator: 'v0.app',
+  title: 'MirrorAI | AI Surveillance Platform',
+  description: 'The AI-powered competitive surveillance platform. Monitor targets, detect signals, and extract intelligence with zero latency.',
   icons: {
     icon: [
       {
@@ -50,13 +59,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
-        <div className="flex h-screen overflow-hidden">
-          <Sidebar />
-          <main className="ml-64 flex-1 h-full overflow-y-auto">
-            {children}
-          </main>
-        </div>
+      <body className={`${inter.variable} ${jetbrainsMono.variable} ${instrumentSans.variable} ${instrumentSerif.variable} font-sans antialiased`}>
+        {children}
         <Analytics />
       </body>
     </html>

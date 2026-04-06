@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
     
 
-client = TinyFish(api_key="sk-tinyfish-eUDfTco1Y1EIhH1ZUUmn44TfazGTtteK")
+client = TinyFish(api_key=os.getenv("TINYFISH_API_KEY"))
 
 
 with client.agent.stream(

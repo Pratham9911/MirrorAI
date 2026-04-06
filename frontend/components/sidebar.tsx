@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 const navItems = [
   {
     name: "Overview",
-    href: "/",
+    href: "/overview",
     icon: LayoutDashboard,
   },
   {
