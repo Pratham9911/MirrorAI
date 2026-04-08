@@ -5,8 +5,9 @@ import Link from "next/link"
 import {
   ArrowLeft, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2,
   Lightbulb, Target, ExternalLink, Calendar, Building2, Tag,
-  BarChart3, Shield, Zap, MessageSquare, Layers, Radio, Users,
-  DollarSign, GitCompare, Star, AlertOctagon, FlameKindling, Quote
+  BarChart3, Shield, Zap, MessageSquare, Layers, Users,
+  DollarSign, GitCompare, Star, AlertOctagon, FlameKindling, Quote,
+  Database, ChevronDown, ChevronRight as ChevronRightIcon
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton, SkeletonCard } from "@/components/skeleton-loader"
@@ -22,23 +23,21 @@ interface Recommendation {
 interface ReportData {
   id: string; name: string; product: string; description: string
   completedAt: string; score: number; tags: string[]
-  // Score
   score_breakdown?: { product_strength: number; market_gap: number; competitor_threat: number; data_certainty: number; rationale: string }
-  // Sections
   executive_summary?: string
   strengths: string[]; weaknesses: string[]
-  competitor_landscape?: { name: string; url: string; description: string; threat_level: string; key_differentiator?: string }[]
+  competitor_landscape?: { name: string; url: string; description: string; threat_level: string; key_differentiator?: string; pricing_summary?: string }[]
   competitors?: { name: string; url: string; description: string }[]
   pricing_comparison?: { company: string; plan: string; price: string; highlights: string }[]
   feature_matrix?: { feature: string; our_product: string; competitors_status: string }[]
   customer_reviews?: { company: string; sentiment: string; quote: string; source: string }[]
   customer_reviews_summary?: string
   market_positioning?: string
-  signals: { type: string; title?: string; company?: string; description: string; date: string }[]
   risk_assessment?: { risk: string; severity: string; mitigation: string }[]
   predictions: string[]
   recommendations: (string | Recommendation)[]
   sources: { name: string; url: string }[]
+  agent_data?: Record<string, any>
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -59,15 +58,132 @@ function getThreatBadge(level: string) {
   if (l === "medium") return "bg-warning/20 text-warning"
   return "bg-success/20 text-success"
 }
-function SectionCard({ icon, iconBg, title, children }: { icon: React.ReactNode; iconBg: string; title: string; children: React.ReactNode }) {
+function SectionCard({ icon, iconBg, title, subtitle, children }: { icon: React.ReactNode; iconBg: string; title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-border bg-card p-6">
-      <h3 className="mb-4 flex items-center gap-2 font-semibold text-foreground">
-        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
-        {title}
-      </h3>
+      <div className="mb-4">
+        <h3 className="flex items-center gap-2 font-semibold text-foreground">
+          <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
+          {title}
+        </h3>
+        {subtitle && <p className="mt-1 text-xs text-muted-foreground ml-10">{subtitle}</p>}
+      </div>
       {children}
     </div>
+  )
+}
+
+// ─── Raw Agent Data Renderer ──────────────────────────────────────────────────
+// Recursively renders any key/value JSON from the agent beautifully
+function AgentValueRenderer({ value, depth = 0 }: { value: any; depth?: number }) {
+  const [collapsed, setCollapsed] = useState(depth > 1)
+
+  if (value === null || value === undefined) return <span className="text-muted-foreground/50 italic text-xs">null</span>
+
+  if (typeof value === "boolean") return (
+    <span className={cn("text-xs font-semibold", value ? "text-success" : "text-destructive")}>
+      {value ? "Yes" : "No"}
+    </span>
+  )
+
+  if (typeof value === "number") return <span className="text-info font-mono text-sm">{value}</span>
+
+  if (typeof value === "string") {
+    // Detect URLs
+    if (value.startsWith("http")) return (
+      <a href={value} target="_blank" rel="noopener noreferrer" className="text-info hover:underline text-sm break-all flex items-center gap-1">
+        <ExternalLink className="h-3 w-3 shrink-0" />{value}
+      </a>
+    )
+    return <span className="text-foreground text-sm leading-relaxed">{value}</span>
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-muted-foreground/50 italic text-xs">empty</span>
+    return (
+      <div className="space-y-2">
+        {value.map((item, i) => (
+          <div key={i} className="flex gap-2">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground mt-0.5">{i + 1}</span>
+            <div className="flex-1 min-w-0">
+              {typeof item === "object" && item !== null
+                ? <AgentObjectCard value={item} depth={depth + 1} />
+                : <AgentValueRenderer value={item} depth={depth + 1} />
+              }
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (typeof value === "object") {
+    return <AgentObjectCard value={value} depth={depth} />
+  }
+
+  return <span className="text-foreground text-sm">{String(value)}</span>
+}
+
+function AgentObjectCard({ value, depth = 0 }: { value: Record<string, any>; depth?: number }) {
+  const [collapsed, setCollapsed] = useState(depth > 0)
+  const entries = Object.entries(value)
+  if (entries.length === 0) return <span className="text-muted-foreground/50 italic text-xs">empty object</span>
+
+  const label = (value.name || value.title || value.company || value.feature || "") as string
+
+  return (
+    <div className={cn("rounded-lg border border-border/50 bg-muted/20", depth === 0 ? "" : "")}>
+      {depth > 0 && label && (
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-muted/40 rounded-lg transition-colors"
+        >
+          {collapsed ? <ChevronRightIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+          <span className="truncate">{label}</span>
+        </button>
+      )}
+      {!collapsed && (
+        <div className={cn("space-y-2", depth > 0 ? "px-3 pb-3" : "")}>
+          {entries.map(([k, v]) => (
+            <div key={k} className={cn("grid gap-1", typeof v === "object" && v !== null ? "grid-cols-1" : "grid-cols-[140px_1fr] items-start gap-3")}>
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-0.5 break-all">
+                {k.replace(/_/g, " ")}
+              </span>
+              <div className="min-w-0">
+                <AgentValueRenderer value={v} depth={depth + 1} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AgentDataSection({ data }: { data: Record<string, any> }) {
+  const entries = Object.entries(data)
+  if (entries.length === 0) return null
+
+  return (
+    <SectionCard icon={<Database className="h-4 w-4 text-purple-400" />} iconBg="bg-purple-500/20" title="Raw Agent Data" subtitle="Exactly what the browser agent extracted — unfiltered">
+      <div className="space-y-4">
+        {entries.map(([key, val]) => {
+          const isComplex = typeof val === "object" && val !== null
+          return (
+            <div key={key} className="rounded-lg border border-border bg-muted/20 overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-border/50 bg-muted/40">
+                <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  {key.replace(/_/g, " ")}
+                </span>
+              </div>
+              <div className="p-4">
+                <AgentValueRenderer value={val} depth={0} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </SectionCard>
   )
 }
 
@@ -79,25 +195,15 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     async function loadData() {
-      // 1. Try localStorage first
       const saved = localStorage.getItem('mirror_insights')
       if (saved) {
         const insights = JSON.parse(saved)
         const found = insights.find((i: any) => i.id === id)
-        if (found) {
-          setReport(found)
-          setIsLoading(false)
-          return
-        }
+        if (found) { setReport(found); setIsLoading(false); return }
       }
-
-      // 2. Fallback to API
       try {
         const res = await fetch(`http://localhost:8000/api/insights/${id}`)
-        if (res.ok) {
-          const data = await res.json()
-          setReport(data)
-        }
+        if (res.ok) { const data = await res.json(); setReport(data) }
       } catch (e) {
         console.error("Failed to load insight:", e)
       } finally {
@@ -149,7 +255,6 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
               <span className="flex items-center gap-1.5"><Calendar className="h-4 w-4" />{report.completedAt}</span>
             </div>
           </div>
-          {/* Score ring */}
           <div className={cn("flex flex-col items-center rounded-xl px-5 py-3 ring-2 shrink-0", sc.bg, sc.ring)}>
             <span className={cn("text-4xl font-bold tabular-nums", sc.text)}>{report.score}</span>
             <span className={cn("text-xs font-medium mt-0.5", sc.text)}>{getScoreLabel(report.score)}</span>
@@ -185,7 +290,7 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                   {[
                     { label: "Product Strength", key: "product_strength", max: 25 },
                     { label: "Market Gap Opportunity", key: "market_gap", max: 25 },
-                    { label: "Competitor Threat (inverted)", key: "competitor_threat", max: 25 },
+                    { label: "Competitor Threat", key: "competitor_threat", max: 25 },
                     { label: "Data Certainty", key: "data_certainty", max: 25 },
                   ].map(({ label, key, max }) => {
                     const val = (sb as any)[key] ?? 0
@@ -212,7 +317,12 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
 
             {/* 3. Strengths & Weaknesses */}
             <div className="grid gap-6 md:grid-cols-2">
-              <SectionCard icon={<TrendingUp className="h-4 w-4 text-success" />} iconBg="bg-success/20" title="Strengths">
+              <SectionCard
+                icon={<TrendingUp className="h-4 w-4 text-success" />}
+                iconBg="bg-success/20"
+                title="Our Strengths"
+                subtitle="Where our product has the advantage"
+              >
                 <ul className="space-y-3">
                   {(report.strengths ?? []).map((s, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm">
@@ -220,9 +330,17 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                       <span className="text-foreground">{s}</span>
                     </li>
                   ))}
+                  {(report.strengths ?? []).length === 0 && (
+                    <li className="text-sm text-muted-foreground italic">Not enough data to determine strengths.</li>
+                  )}
                 </ul>
               </SectionCard>
-              <SectionCard icon={<TrendingDown className="h-4 w-4 text-warning" />} iconBg="bg-warning/20" title="Weaknesses">
+              <SectionCard
+                icon={<TrendingDown className="h-4 w-4 text-warning" />}
+                iconBg="bg-warning/20"
+                title="Competitor Edges"
+                subtitle="Where competitors are currently ahead of us"
+              >
                 <ul className="space-y-3">
                   {(report.weaknesses ?? []).map((w, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm">
@@ -230,18 +348,26 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                       <span className="text-foreground">{w}</span>
                     </li>
                   ))}
+                  {(report.weaknesses ?? []).length === 0 && (
+                    <li className="text-sm text-muted-foreground italic">No competitor edges identified.</li>
+                  )}
                 </ul>
               </SectionCard>
             </div>
 
-            {/* 4. Market Positioning */}
+            {/* 4. Raw Agent Data — the real extracted output */}
+            {report.agent_data && Object.keys(report.agent_data).length > 0 && (
+              <AgentDataSection data={report.agent_data} />
+            )}
+
+            {/* 5. Market Positioning */}
             {report.market_positioning && (
               <SectionCard icon={<Layers className="h-4 w-4 text-info" />} iconBg="bg-info/20" title="Market Positioning">
                 <p className="text-sm text-foreground leading-relaxed">{report.market_positioning}</p>
               </SectionCard>
             )}
 
-            {/* 5. Pricing Comparison */}
+            {/* 6. Pricing Comparison */}
             {(report.pricing_comparison ?? []).length > 0 && (
               <SectionCard icon={<DollarSign className="h-4 w-4 text-warning" />} iconBg="bg-warning/20" title="Pricing Comparison">
                 <div className="overflow-x-auto -mx-2">
@@ -277,7 +403,7 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
               </SectionCard>
             )}
 
-            {/* 6. Feature Matrix */}
+            {/* 7. Feature Matrix */}
             {(report.feature_matrix ?? []).length > 0 && (
               <SectionCard icon={<GitCompare className="h-4 w-4 text-purple-400" />} iconBg="bg-purple-500/20" title="Feature Matrix">
                 <div className="overflow-x-auto -mx-2">
@@ -315,7 +441,7 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
               </SectionCard>
             )}
 
-            {/* 7. Customer Reviews */}
+            {/* 8. Customer Reviews */}
             {(report.customer_reviews ?? []).length > 0 && (
               <SectionCard icon={<Quote className="h-4 w-4 text-purple-400" />} iconBg="bg-purple-500/20" title="Customer Voice">
                 <div className="space-y-4">
@@ -342,38 +468,6 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                     {report.customer_reviews_summary}
                   </p>
                 )}
-              </SectionCard>
-            )}
-
-            {/* 8. Signals */}
-            {(report.signals ?? []).length > 0 && (
-              <SectionCard icon={<Radio className="h-4 w-4 text-info" />} iconBg="bg-info/20" title="Live Signals Detected">
-                <div className="space-y-3">
-                  {report.signals.map((sig, i) => {
-                    const typeMap: Record<string, string> = {
-                      price: "bg-warning/20 text-warning", feature: "bg-success/20 text-success",
-                      hiring: "bg-info/20 text-info", funding: "bg-purple-500/20 text-purple-400",
-                      alert: "bg-destructive/20 text-destructive",
-                    }
-                    return (
-                      <div key={i} className="rounded-lg border border-border bg-muted/20 p-4">
-                        <div className="flex items-start gap-3">
-                          <span className={cn("rounded-md px-2 py-0.5 text-xs font-bold uppercase shrink-0 mt-0.5", typeMap[sig.type] ?? "bg-muted text-muted-foreground")}>
-                            {sig.type}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                              {sig.title && <p className="text-sm font-medium text-foreground">{sig.title}</p>}
-                              {sig.company && <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{sig.company}</span>}
-                            </div>
-                            <p className="text-sm text-muted-foreground">{sig.description}</p>
-                          </div>
-                          <span className="text-xs text-muted-foreground shrink-0">{sig.date}</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
               </SectionCard>
             )}
 
@@ -420,7 +514,6 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
               <SectionCard icon={<Lightbulb className="h-4 w-4 text-success" />} iconBg="bg-success/20" title="Recommendations">
                 <div className="space-y-3">
                   {report.recommendations.map((rec, i) => {
-                    // Handle both old string format and new object format
                     if (typeof rec === "string") {
                       return (
                         <div key={i} className="flex items-start gap-3 text-sm">
@@ -462,11 +555,11 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                 {[
                   { label: "Mirror Score", value: `${report.score} / 100` },
                   { label: "Competitors", value: competitorList.length },
-                  { label: "Signals", value: (report.signals ?? []).length },
                   { label: "Risks Identified", value: (report.risk_assessment ?? []).length },
                   { label: "Recommendations", value: (report.recommendations ?? []).length },
-                  { label: "Sources", value: (report.sources ?? []).length },
                   { label: "Predictions", value: (report.predictions ?? []).length },
+                  { label: "Sources", value: (report.sources ?? []).length },
+                  { label: "Reviews Found", value: (report.customer_reviews ?? []).length },
                 ].map(({ label, value }) => (
                   <div key={label} className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">{label}</span>
@@ -484,7 +577,7 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                 </h3>
                 <div className="space-y-3">
                   {competitorList.map((comp, i) => {
-                    const c = comp as { name: string; url: string; description: string; threat_level?: string; key_differentiator?: string }
+                    const c = comp as { name: string; url: string; description: string; threat_level?: string; key_differentiator?: string; pricing_summary?: string }
                     return (
                     <div key={i} className="rounded-lg border border-border bg-muted/20 p-3">
                       <div className="flex items-center justify-between mb-1.5 gap-2">
@@ -505,6 +598,12 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                         <p className="text-xs text-warning mt-1.5 flex items-start gap-1">
                           <Zap className="h-3 w-3 shrink-0 mt-0.5" />
                           {c.key_differentiator}
+                        </p>
+                      )}
+                      {c.pricing_summary && c.pricing_summary !== "Not found" && (
+                        <p className="text-xs text-muted-foreground mt-1.5 flex items-start gap-1">
+                          <DollarSign className="h-3 w-3 shrink-0 mt-0.5" />
+                          {c.pricing_summary}
                         </p>
                       )}
                     </div>

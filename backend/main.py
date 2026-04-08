@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Optional
 import traceback
 import os
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -58,35 +59,69 @@ insights_db = {}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STREAM WORKER  — runs agent.stream() to show live browser + logs to the user
+# SSE WORKER  — single run-sse call: live logs + final structured result
 # ─────────────────────────────────────────────────────────────────────────────
-def stream_worker(thread_id: str, url: str, stream_goal: str, logs: list, signals: list):
+SSE_ENDPOINT = "https://agent.tinyfish.ai/v1/automation/run-sse"
+
+def sse_worker(thread_id: str, url: str, goal: str, logs: list, signals: list) -> tuple[str, dict]:
     """
-    Runs tinyfish agent.stream() — purely for the live UI.
-    Populates logs and signals but does NOT produce the insight.
-    Returns combined_purpose_text so the insight worker can use it.
+    Hits TinyFish run-sse once.
+    — Streams PROGRESS events live into logs/signals (for the UI)
+    — Captures the COMPLETE event result (for the insight engine)
+    Returns (combined_purpose_text, run_result_dict)
     """
     combined_purpose_text = ""
-    import random
+    run_result: dict = {}
+
+    headers = {
+        "X-API-Key": os.getenv("TINYFISH_API_KEY"),
+        "Content-Type": "application/json",
+    }
+    payload = {"url": url, "goal": goal}
+    current_event_type = None
 
     try:
-        with tf_client.agent.stream(url=url, goal=stream_goal) as stream:
-            for event in stream:
+        with requests.post(SSE_ENDPOINT, headers=headers, json=payload, stream=True, timeout=300) as resp:
+            resp.raise_for_status()
+            for raw_line in resp.iter_lines():
+                if not raw_line:
+                    continue
+                decoded = raw_line.decode("utf-8")
+
+                # SSE protocol: "event: TYPE" or "data: {...}"
+                if decoded.startswith("event:"):
+                    current_event_type = decoded.replace("event:", "").strip()
+                    continue
+
+                if not decoded.startswith("data:"):
+                    continue
+
+                data_str = decoded[len("data:"):].strip()
+                try:
+                    data = json.loads(data_str)
+                except Exception:
+                    continue
+
+                event_type = data.get("type", current_event_type or "")
                 ts = datetime.now().strftime("%H:%M:%S")
-                if event.type == "STARTED":
+
+                if event_type == "STARTED":
                     logs.append({
                         "id": str(uuid.uuid4()), "timestamp": ts,
                         "message": "Browser session started", "type": "success"
                     })
-                elif event.type == "STREAMING_URL":
+
+                elif event_type == "STREAMING_URL":
+                    streaming_url = data.get("streaming_url", "")
                     if thread_id in active_runs_db:
-                        active_runs_db[thread_id]["currentUrl"] = event.streaming_url
+                        active_runs_db[thread_id]["currentUrl"] = streaming_url
                     logs.append({
                         "id": str(uuid.uuid4()), "timestamp": ts,
-                        "message": f"Streaming at {event.streaming_url}", "type": "info"
+                        "message": f"Streaming at {streaming_url}", "type": "info"
                     })
-                elif event.type == "PROGRESS":
-                    purpose = str(getattr(event, "purpose", "Navigating..."))
+
+                elif event_type == "PROGRESS":
+                    purpose = str(data.get("purpose", "Navigating..."))
                     combined_purpose_text += purpose + "\n"
                     if thread_id in active_runs_db:
                         active_runs_db[thread_id]["progress"] = min(
@@ -96,7 +131,7 @@ def stream_worker(thread_id: str, url: str, stream_goal: str, logs: list, signal
                         "id": str(uuid.uuid4()), "timestamp": ts,
                         "message": f"→ {purpose}", "type": "warning"
                     })
-                    # Live signal detection from stream actions
+                    # Live signal detection
                     pl = purpose.lower()
                     if any(k in pl for k in ["price", "cost", "plan", "pricing", "₹", "$"]):
                         signals.insert(0, {
@@ -114,46 +149,33 @@ def stream_worker(thread_id: str, url: str, stream_goal: str, logs: list, signal
                             "description": f"Product update signal: {purpose[:80]}", "time": ts
                         })
 
-                elif event.type == "COMPLETE":
-                    logs.append({
-                        "id": str(uuid.uuid4()), "timestamp": ts,
-                        "message": "Stream analysis complete ✓", "type": "success"
-                    })
+                elif event_type == "COMPLETE":
+                    # This is the gold: structured result from the agent
+                    run_result = data.get("result", {})
                     if thread_id in active_runs_db:
                         active_runs_db[thread_id]["progress"] = 95
+                    logs.append({
+                        "id": str(uuid.uuid4()), "timestamp": ts,
+                        "message": "Agent analysis complete ✓", "type": "success"
+                    })
+
+                elif event_type == "HEARTBEAT":
+                    pass  # keepalive, ignore
 
     except Exception as e:
         ts = datetime.now().strftime("%H:%M:%S")
         logs.append({
             "id": str(uuid.uuid4()), "timestamp": ts,
-            "message": f"Stream error: {str(e)}", "type": "error"
+            "message": f"Agent error: {str(e)}", "type": "error"
         })
-        print(f"[stream_worker] error: {e}")
+        print(f"[sse_worker] error: {e}")
         traceback.print_exc()
 
-    return combined_purpose_text
+    return combined_purpose_text, run_result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RUN WORKER  — runs agent.run() to get real structured JSON from the agent
-# ─────────────────────────────────────────────────────────────────────────────
-def run_worker(url: str, run_goal: str) -> dict:
-    """
-    Runs tinyfish agent.run() — blocking, returns the structured result dict
-    (or empty dict on failure).
-    """
-    try:
-        result = tf_client.agent.run(url=url, goal=run_goal)
-        if result and result.result:
-            return result.result
-    except Exception as e:
-        print(f"[run_worker] error: {e}")
-        traceback.print_exc()
-    return {}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# GROQ INSIGHT BUILDER  — uses stream logs + run result to produce rich report
+# GROQ INSIGHT BUILDER  — uses SSE agent data to produce a rich Mirror report
 # ─────────────────────────────────────────────────────────────────────────────
 def build_insight_with_groq(
     thread: dict,
@@ -162,13 +184,15 @@ def build_insight_with_groq(
     signals: list
 ) -> dict:
     """
-    Calls Groq with all available data to generate a Mirror report.
+    Calls Groq with agent SSE data to generate a comprehensive Mirror report.
+    The agent can return any key/value JSON — Groq must interpret it flexibly.
+    Strengths = OUR product advantages. Weaknesses = where competitors beat us.
+    No signals in the output.
     """
     if not groq_client:
         return {}
 
     run_result_str = json.dumps(run_result, indent=2) if run_result else "Not available"
-    signals_str = json.dumps(signals[:20], indent=2) if signals else "None detected"
     tags_str = ", ".join(thread.get("tags", []))
     competitors_str = ", ".join(
         f"{c.get('name','?')} ({c.get('url','?')})"
@@ -176,79 +200,104 @@ def build_insight_with_groq(
     )
 
     system_prompt = (
-        "You are Mirror — a ruthlessly honest competitive-intelligence analyst. "
-        "Your job is to give the founders of a product a full-truth report of "
-        "where they stand vs. competitors. Be specific, data-driven, and candid. "
+        "You are Mirror — a ruthlessly honest, data-driven competitive-intelligence analyst. "
+        "Your audience is the founding team of a startup who needs actionable truth, not fluff. "
+        "CRITICAL RULES:\n"
+        "(1) The agent data below can have ANY structure — interpret every key/value regardless of nesting or naming.\n"
+        "(2) STRENGTHS = things OUR product does well that competitors don't match. "
+        "WEAKNESSES (for us) = things competitors do better or have that we currently lack.\n"
+        "(3) Never hallucinate — every claim must trace back to the data below.\n"
+        "(4) Be specific: cite actual prices, feature names, quotes, ratings from the data.\n"
+        "(5) Recommendations = concrete steps the team can act on this week.\n"
         "Return ONLY valid JSON — no markdown, no prose outside JSON."
     )
 
     prompt = f"""
-We just ran a live competitor analysis for the product below.
-You have TWO real data sources to work with — use ALL of them.
+A browser AI agent analysed competitor(s) for the product described below.
+The agent returned a structured JSON — it can have ANY keys/nesting (e.g. competitor_analysis,
+pricing_tiers, features, hiring_signals, customer_reviews with user/rating/comment, etc.).
+Your job: read EVERY field of that JSON and produce a Mirror intelligence report.
 
 ═══════════════════════════════════
-PRODUCT BEING ANALYSED
+PRODUCT BEING ANALYSED (our product)
 ═══════════════════════════════════
-Name       : {thread['productName']}
-Thread     : {thread['threadName']}
-Description: {thread['description']}
-Focus Tags : {tags_str}
-Competitors: {competitors_str}
+Name        : {thread['productName']}
+Thread      : {thread['threadName']}
+Description : {thread['description']}
+Focus Tags  : {tags_str or 'General competitive analysis'}
+Competitors : {competitors_str or 'Not specified — agent explored independently'}
 
 ═══════════════════════════════════
-DATA SOURCE 1 — Live browser actions log (what our agent actually did)
-═══════════════════════════════════
-{combined_purpose_text or "No stream data captured."}
-
-═══════════════════════════════════
-DATA SOURCE 2 — Structured result returned by the research agent (real data)
+AGENT EXTRACTED DATA (raw — any structure)
 ═══════════════════════════════════
 {run_result_str}
 
 ═══════════════════════════════════
-SCORING RULES (0-100)
+INTERPRETATION GUIDE
 ═══════════════════════════════════
-1. product_strength (0-25)
-2. market_gap (0-25)
-3. competitor_threat (0-25)
-4. data_certainty (0-25)
-Final score = sum of all four sub-scores.
+- Look for pricing in any key (pricing_tiers, price, plans, cost, tiers, etc.)
+- Look for features in any key (features, capabilities, tools, offerings, etc.)
+- Look for reviews in any key (customer_reviews, testimonials, ratings, comments, etc.)
+  — map user/rating/comment fields to → company/sentiment/quote
+- Look for hiring signals in any key (hiring_signals, jobs, careers, team_size, etc.)
 
-OUTPUT SCHEMA (JSON Only):
+═══════════════════════════════════
+SCORING GUIDE (conservative, data-driven only)
+═══════════════════════════════════
+product_strength  (0-25): How differentiated and defensible is OUR product vs competitors found?
+market_gap        (0-25): How clearly underserved is the market our product targets?
+competitor_threat (0-25): How serious is the competitive pressure from analysed competitors?
+data_certainty    (0-25): How complete and reliable was the agent data?
+Final score = sum of four sub-scores (0-100).
+
+OUTPUT SCHEMA — return ONLY this JSON:
 {{
   "score": <0-100>,
   "score_breakdown": {{
-    "product_strength": <0-25>, "market_gap": <0-25>, "competitor_threat": <0-25>, "data_certainty": <0-25>,
-    "rationale": "<reasoning>"
+    "product_strength": <0-25>,
+    "market_gap": <0-25>,
+    "competitor_threat": <0-25>,
+    "data_certainty": <0-25>,
+    "rationale": "<2-3 sentence explanation of how you reached each sub-score, citing specific data points>"
   }},
-  "executive_summary": "<summary>",
-  "strengths": ["<strength>", ...],
-  "weaknesses": ["<weakness>", ...],
+  "executive_summary": "<3-4 sentences: where OUR product stands vs the competition, biggest opportunity, biggest threat — direct and data-backed>",
+  "strengths": [
+    "<OUR PRODUCT advantage — what we do better than competitors, e.g. 'Open-source while Competitor X is closed-source'>",
+    "..."
+  ],
+  "weaknesses": [
+    "<Where a COMPETITOR beats us — what they have that we lack, e.g. 'Competitor X has 500 integrations; we have none documented'>",
+    "..."
+  ],
   "competitor_landscape": [
-    {{ "name": "<name>", "url": "<url>", "description": "<desc>", "threat_level": "<Low | Medium | High>", "key_differentiator": "<diff>" }}
+    {{
+      "name": "<competitor name from agent data>",
+      "url": "<competitor url>",
+      "description": "<what they do, drawn from agent data>",
+      "threat_level": "<Low | Medium | High>",
+      "key_differentiator": "<their strongest advantage>",
+      "pricing_summary": "<pricing tiers or model — exact if found, else Not found>"
+    }}
   ],
   "pricing_comparison": [
-    {{ "company": "<name>", "plan": "<plan>", "price": "<price>", "highlights": "<desc>" }}
+    {{ "company": "<name>", "plan": "<plan name>", "price": "<exact price from data>", "highlights": "<what is included>" }}
   ],
   "feature_matrix": [
-    {{ "feature": "<name>", "our_product": "<Yes | No | Partial>", "competitors_status": "<desc>" }}
+    {{ "feature": "<feature name>", "our_product": "<Yes | No | Partial | Unknown>", "competitors_status": "<which competitors have it and how>" }}
   ],
   "customer_reviews": [
-    {{ "company": "<name>", "sentiment": "<Positive | Negative>", "quote": "<quote>", "source": "<source>" }}
+    {{ "company": "<competitor name>", "sentiment": "<Positive | Negative | Mixed>", "quote": "<actual quote from the data — user/comment/review field>", "source": "<where it came from>" }}
   ],
-  "market_positioning": "<desc>",
-  "signals": [
-    {{ "type": "<type>", "title": "<title>", "company": "<name>", "description": "<desc>", "date": "<YYYY-MM-DD>" }}
-  ],
+  "customer_reviews_summary": "<overall sentiment pattern across all competitors — 2-3 sentences>",
+  "market_positioning": "<where our product fits in the landscape relative to competitors — 2-3 sentences>",
   "risk_assessment": [
-    {{ "risk": "<risk>", "severity": "<severity>", "mitigation": "<mitigation>" }}
+    {{ "risk": "<specific risk>", "severity": "<Critical | High | Medium | Low>", "mitigation": "<concrete action to reduce this risk>" }}
   ],
-  "customer_reviews_summary": "<summary>",
-  "predictions": ["<prediction>", ...],
+  "predictions": ["<evidence-based prediction about market or competition in next 6-12 months>", ...],
   "recommendations": [
-    {{ "action": "<action>", "priority": "<High | Medium | Low>", "rationale": "<rationale>" }}
+    {{ "action": "<specific, actionable next step>", "priority": "<High | Medium | Low>", "rationale": "<why this matters based on the data>" }}
   ],
-  "sources": [ {{ "name": "<name>", "url": "<url>" }} ]
+  "sources": [ {{ "name": "<page or company name>", "url": "<url visited by agent>" }} ]
 }}
 """
 
@@ -259,8 +308,8 @@ OUTPUT SCHEMA (JSON Only):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.15,
-            max_tokens=6000,
+            temperature=0.12,
+            max_tokens=7000,
             response_format={"type": "json_object"}
         )
         return json.loads(completion.choices[0].message.content)
@@ -275,41 +324,37 @@ OUTPUT SCHEMA (JSON Only):
 def process_thread(thread_id: str, thread: dict):
     print(f"[backend] Starting process_thread for {thread_id}")
     url = thread["competitors"][0]["url"] if thread.get("competitors") else "https://www.google.com"
-    logs  = active_runs_db[thread_id]["logs"]
+    logs    = active_runs_db[thread_id]["logs"]
     signals = active_runs_db[thread_id]["signals"]
 
     comps_str = ", ".join([f"{c['name']}" for c in thread.get("competitors", [])])
-    tags_str = ", ".join(thread.get("tags", []))
+    tags_str  = ", ".join(thread.get("tags", []))
 
-    stream_goal = f"Quickly browse competitors {comps_str} for {thread['productName']} and check: {tags_str}."
-    run_goal = f"Deeply analyze competitors {comps_str}. Extract and check: {tags_str} and reviews for {thread['productName']} analysis."
+    # Single unified goal — the SSE agent does deep work AND returns structured data
+    goal = (
+        f"You are a competitive intelligence researcher analysing '{thread['productName']}'. "
+        f"Visit the competitor site(s): {comps_str or url}. "
+        f"analyse and extract: {tags_str or 'pricing, features, reviews, positioning'}. "
+        f"Also gather customer reviews,"
+        f"Return a comprehensive structured JSON with all findings."
+    )
 
     logs.append({"id": str(uuid.uuid4()), "timestamp": datetime.now().strftime("%H:%M:%S"), "message": "Starting Analysis...", "type": "info"})
 
-    s_res = {"text": ""}
-    r_res = {"data": {}}
+    # ── ONE SSE call does the job of both stream_worker + run_worker ──
+    print(f"[backend] Thread {thread_id}: Starting SSE worker (single call)")
+    combined_purpose_text, run_result = sse_worker(thread_id, url, goal, logs, signals)
+    print(f"[backend] Thread {thread_id}: SSE worker finished — result keys: {list(run_result.keys()) if run_result else 'empty'}")
 
-    def do_stream(): 
-        print(f"[backend] Thread {thread_id}: Starting stream worker")
-        s_res["text"] = stream_worker(thread_id, url, stream_goal, logs, signals)
-        print(f"[backend] Thread {thread_id}: Stream worker finished")
-
-    def do_run(): 
-        print(f"[backend] Thread {thread_id}: Starting run worker")
-        r_res["data"] = run_worker(url, run_goal)
-        print(f"[backend] Thread {thread_id}: Run worker finished")
-
-    # Run sequentially to ensure stable log streaming and avoid agent concurrency locks
-    do_stream()
-    do_run()
-
-    print(f"[backend] Thread {thread_id}: Workers finished, building report")
+    print(f"[backend] Thread {thread_id}: Building insight report")
     try:
-        report = build_insight_with_groq(thread, s_res["text"], r_res["data"], signals)
+        report = build_insight_with_groq(thread, combined_purpose_text, run_result, signals)
         report.update({
             "id": thread_id, "name": thread["threadName"], "product": thread["productName"],
             "description": thread["description"], "completedAt": datetime.now().strftime("%Y-%m-%d"),
-            "tags": thread["tags"]
+            "tags": thread["tags"],
+            # Store the raw agent output verbatim — frontend renders it directly
+            "agent_data": run_result,
         })
         insights_db[thread_id] = report
         if thread_id in threads_db: threads_db[thread_id]["status"] = "completed"

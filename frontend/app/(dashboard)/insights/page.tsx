@@ -58,8 +58,8 @@ export default function InsightsPage() {
         
         setThreads(combined.map((r: any) => ({
           ...r,
-          signalsDetected: r.signals?.length || 0,
-          competitorsAnalyzed: r.competitors?.length || 0,
+          reviewsFound: r.customer_reviews?.length || 0,
+          competitorsAnalyzed: (r.competitor_landscape ?? r.competitors ?? []).length,
         })))
         localStorage.setItem('mirror_insights', JSON.stringify(combined))
         setIsLoading(false)
@@ -95,8 +95,8 @@ export default function InsightsPage() {
   const avgScore = threads.length
     ? Math.round(threads.reduce((acc, t) => acc + t.score, 0) / threads.length)
     : 0
-  const totalSignals = threads.reduce((acc, t) => acc + t.signalsDetected, 0)
-  const totalCompetitors = [...new Set(threads.flatMap(t => t.competitorsAnalyzed))].length
+  const totalReviews = threads.reduce((acc, t) => acc + (t.reviewsFound || 0), 0)
+  const totalCompetitors = threads.reduce((acc, t) => acc + (t.competitorsAnalyzed || 0), 0)
 
   if (isLoading) {
     return (
@@ -152,8 +152,8 @@ export default function InsightsPage() {
               <TrendingUp className="h-5 w-5 text-muted-foreground" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Total Signals</p>
-              <p className="text-2xl font-semibold text-foreground">{totalSignals}</p>
+              <p className="text-sm text-muted-foreground">Reviews Found</p>
+              <p className="text-2xl font-semibold text-foreground">{totalReviews}</p>
             </div>
           </div>
         </div>
@@ -263,7 +263,7 @@ export default function InsightsPage() {
                     </span>
                     <span className="flex items-center gap-1">
                       <TrendingUp className="h-3.5 w-3.5" />
-                      {thread.signalsDetected} signals
+                      {thread.reviewsFound || 0} reviews
                     </span>
                   </div>
                 </div>
