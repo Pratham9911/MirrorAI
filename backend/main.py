@@ -694,6 +694,18 @@ def _serialize_monitor(m: dict) -> dict:
         "createdAt": m.get("createdAt", ""),
     }
 
+""" Database Connection Below """
+from fastapi import FastAPI
+from db.database import engine
+from db.models import Base
+
+app = FastAPI()
+
+Base.metadata.create_all(bind=engine)
+
+@app.get("/")
+def root():
+    return {"message": "Tables created"}
 
 if __name__ == "__main__":
     import uvicorn
