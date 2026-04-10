@@ -67,7 +67,7 @@ export function Navigation() {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-4">
-            <Link href="/overview" className={`transition-all duration-500 ${isScrolled ? "text-xs text-foreground/70 hover:text-foreground" : "text-sm text-white/70 hover:text-white"}`}>
+            <Link href="/login" className={`transition-all duration-500 ${isScrolled ? "text-xs text-foreground/70 hover:text-foreground" : "text-sm text-white/70 hover:text-white"}`}>
               Sign in
             </Link>
             <Link href="/overview">
@@ -133,7 +133,7 @@ export function Navigation() {
           }`}
           style={{ transitionDelay: isMobileMenuOpen ? "300ms" : "0ms" }}
           >
-            <Link href="/overview" className="flex-1" onClick={() => setIsMobileMenuOpen(false)}>
+            <Link href="/login" className="flex-1" onClick={() => setIsMobileMenuOpen(false)}>
               <Button 
                 variant="outline" 
                 className="w-full rounded-full h-14 text-base"

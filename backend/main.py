@@ -332,10 +332,11 @@ def process_thread(thread_id: str, thread: dict):
 
     # Single unified goal — the SSE agent does deep work AND returns structured data
     goal = (
-        f"You are a competitive intelligence researcher analysing '{thread['productName']}'. "
+        f"You are a competitive intelligence researcher analysing '{thread['productName']}' , description : {thread['description']}. "
         f"Visit the competitor site(s): {comps_str or url}. "
         f"analyse and extract: {tags_str or 'pricing, features, reviews, positioning'}. "
         f"Also gather customer reviews,"
+        f"extract data in short and fast"
         f"Return a comprehensive structured JSON with all findings."
     )
 

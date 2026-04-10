@@ -1,4 +1,5 @@
 import { Sidebar } from '@/components/sidebar'
+import { ProtectedRoute } from '@/components/auth/protected-route'
 
 export default function DashboardLayout({
   children,
@@ -9,7 +10,9 @@ export default function DashboardLayout({
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <main className="ml-64 flex-1 h-full overflow-y-auto">
-        {children}
+        <ProtectedRoute>
+          {children}
+        </ProtectedRoute>
       </main>
     </div>
   )

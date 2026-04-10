@@ -14,13 +14,26 @@ import {
   Loader2
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { supabase } from "@/lib/supabaseClient"
 
 export default function OverviewPage() {
   const [isLoading, setIsLoading] = useState(true)
+  const [user, setUser] = useState<any>(null)
 
   useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+    })
+    
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
     const timer = setTimeout(() => setIsLoading(false), 800)
-    return () => clearTimeout(timer)
+    return () => {
+      clearTimeout(timer)
+      subscription.unsubscribe()
+    }
   }, [])
 
   if (isLoading) {
@@ -83,6 +96,14 @@ export default function OverviewPage() {
         <h1 className="text-4xl font-extrabold tracking-tight text-foreground bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
           MirrorAI Dashboard
         </h1>
+        {user && (
+          <div className="flex items-center gap-2 mt-1 mb-2">
+            <span className="flex h-2 w-2 rounded-full bg-success"></span>
+            <p className="text-sm font-medium text-[#E5A1CD]">
+              Connected as {user.user_metadata?.full_name || user.email}
+            </p>
+          </div>
+        )}
         <p className="text-muted-foreground max-w-2xl leading-relaxed">
           The ultimate surveillance architecture. Deploy agents, monitor targets, and extract competitive signals with zero latency.
         </p>

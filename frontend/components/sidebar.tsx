@@ -8,7 +8,8 @@ import {
   Activity, 
   BarChart3,
   Hexagon,
-  Radar
+  Radar,
+  LogOut
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -37,6 +38,11 @@ const navItems = [
     name: "Monitor",
     href: "/monitor",
     icon: Radar,
+  },
+  {
+    name: "Log Out",
+    href: "/logout",
+    icon: LogOut,
   },
 ]
 

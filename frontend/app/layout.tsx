@@ -25,16 +25,16 @@ const instrumentSerif = Instrument_Serif({
 })
 
 export const metadata: Metadata = {
-  title: 'MirrorAI | AI Surveillance Platform',
-  description: 'The AI-powered competitive surveillance platform. Monitor targets, detect signals, and extract intelligence with zero latency.',
+  title: 'MirrorAI | AI Competitor Intelligence Platform',
+  description: 'The AI-powered competitive intelligence platform. Monitor targets, detect signals, and extract intelligence with zero latency.',
   icons: {
     icon: [
       {
-        url: '/icon-light-32x32.png',
+        url: '/icon_main.png',
         media: '(prefers-color-scheme: light)',
       },
       {
-        url: '/icon-dark-32x32.png',
+        url: '/icon.png',
         media: '(prefers-color-scheme: dark)',
       },
       {

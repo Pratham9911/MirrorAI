@@ -5,9 +5,9 @@ import Link from "next/link"
 import {
   ArrowLeft, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2,
   Lightbulb, Target, ExternalLink, Calendar, Building2, Tag,
-  BarChart3, Shield, Zap, MessageSquare, Layers, Users,
-  DollarSign, GitCompare, Star, AlertOctagon, FlameKindling, Quote,
-  Database, ChevronDown, ChevronRight as ChevronRightIcon
+  BarChart3, Shield, Zap, Layers, Users,
+  DollarSign, GitCompare, AlertOctagon, FlameKindling, Quote,
+  Database
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton, SkeletonCard } from "@/components/skeleton-loader"
@@ -73,44 +73,110 @@ function SectionCard({ icon, iconBg, title, subtitle, children }: { icon: React.
   )
 }
 
-// ─── Raw Agent Data Renderer ──────────────────────────────────────────────────
-// Recursively renders any key/value JSON from the agent beautifully
-function AgentValueRenderer({ value, depth = 0 }: { value: any; depth?: number }) {
-  const [collapsed, setCollapsed] = useState(depth > 1)
+// ─── Agent Data Renderer ─────────────────────────────────────────────────────
+// Smart renderer: auto-detects tables vs text vs lists
 
-  if (value === null || value === undefined) return <span className="text-muted-foreground/50 italic text-xs">null</span>
-
-  if (typeof value === "boolean") return (
-    <span className={cn("text-xs font-semibold", value ? "text-success" : "text-destructive")}>
-      {value ? "Yes" : "No"}
-    </span>
+/** Returns true if an array looks like a table (every item is a plain object with matching keys) */
+function isTableArray(arr: any[]): boolean {
+  if (!Array.isArray(arr) || arr.length === 0) return false
+  if (typeof arr[0] !== "object" || arr[0] === null || Array.isArray(arr[0])) return false
+  const keys = Object.keys(arr[0])
+  if (keys.length < 2) return false
+  // At least 80% of rows must be plain objects with some of the same keys
+  const matches = arr.filter(item =>
+    typeof item === "object" && item !== null && !Array.isArray(item) &&
+    Object.keys(item).some(k => keys.includes(k))
   )
+  return matches.length / arr.length >= 0.8
+}
 
-  if (typeof value === "number") return <span className="text-info font-mono text-sm">{value}</span>
+function friendlyLabel(key: string) {
+  return key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function AgentValue({ value }: { value: any }) {
+  if (value === null || value === undefined)
+    return <span className="text-muted-foreground/40 italic text-xs">—</span>
+
+  if (typeof value === "boolean")
+    return <span className={cn("inline-flex rounded-md px-2 py-0.5 text-xs font-semibold", value ? "bg-success/20 text-success" : "bg-destructive/20 text-destructive")}>{value ? "Yes" : "No"}</span>
+
+  if (typeof value === "number")
+    return <span className="font-mono text-info whitespace-nowrap">{value}</span>
 
   if (typeof value === "string") {
-    // Detect URLs
-    if (value.startsWith("http")) return (
-      <a href={value} target="_blank" rel="noopener noreferrer" className="text-info hover:underline text-sm break-all flex items-center gap-1">
-        <ExternalLink className="h-3 w-3 shrink-0" />{value}
-      </a>
-    )
-    return <span className="text-foreground text-sm leading-relaxed">{value}</span>
+    if (value.startsWith("http"))
+      return (
+        <a href={value} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-info hover:underline break-all">
+          <ExternalLink className="h-3 w-3 shrink-0" />{value}
+        </a>
+      )
+    if (value.length <= 20 && /^(high|medium|low|critical|yes|no|positive|negative|mixed|partial|unknown|free|paid)$/i.test(value)) {
+      const lv = value.toLowerCase()
+      const badgeCls =
+        /^(high|critical|negative|no)$/.test(lv) ? "bg-destructive/20 text-destructive" :
+          /^(medium|mixed|partial)$/.test(lv) ? "bg-warning/20 text-warning" :
+            /^(low|positive|yes|free)$/.test(lv) ? "bg-success/20 text-success" :
+              "bg-muted text-muted-foreground"
+      return <span className={cn("rounded-md px-2 py-0.5 text-xs font-semibold whitespace-nowrap", badgeCls)}>{value}</span>
+    }
+    return <span className="text-foreground leading-relaxed">{value}</span>
   }
 
   if (Array.isArray(value)) {
-    if (value.length === 0) return <span className="text-muted-foreground/50 italic text-xs">empty</span>
+    if (value.length === 0) return <span className="text-muted-foreground/40 italic text-xs">—</span>
+
+    // Arrays of primitives
+    if (value.every(v => typeof v !== "object" || v === null)) {
+      if (value.length <= 5 && value.every(v => String(v).length < 20)) {
+        return <span className="text-foreground leading-relaxed">{value.join(", ")}</span>
+      }
+      return (
+        <ul className="list-disc pl-4 space-y-1 my-1 text-foreground leading-relaxed">
+          {value.map((v, i) => (
+            <li key={i}><AgentValue value={v} /></li>
+          ))}
+        </ul>
+      )
+    }
+
+    // Arrays of objects with >= 2 keys -> Table
+    if (isTableArray(value)) {
+      const cols = Array.from(new Set(value.flatMap(r => Object.keys(r))))
+      return (
+        <div className="overflow-x-auto rounded-lg border border-border/60 my-2">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/40 text-left">
+                {cols.map(col => (
+                  <th key={col} className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                    {friendlyLabel(col)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {value.map((row, i) => (
+                <tr key={i} className="border-b border-border/40 hover:bg-muted/20 last:border-0">
+                  {cols.map(col => (
+                    <td key={col} className="px-4 py-3 align-top">
+                      <AgentValue value={row[col]} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+    }
+
+    // Other arrays of mixed objects -> list of blocks
     return (
-      <div className="space-y-2">
+      <div className="space-y-4 my-2">
         {value.map((item, i) => (
-          <div key={i} className="flex gap-2">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground mt-0.5">{i + 1}</span>
-            <div className="flex-1 min-w-0">
-              {typeof item === "object" && item !== null
-                ? <AgentObjectCard value={item} depth={depth + 1} />
-                : <AgentValueRenderer value={item} depth={depth + 1} />
-              }
-            </div>
+          <div key={i} className="rounded-md border border-border/40 p-4 bg-muted/10">
+            <AgentValue value={item} />
           </div>
         ))}
       </div>
@@ -118,46 +184,33 @@ function AgentValueRenderer({ value, depth = 0 }: { value: any; depth?: number }
   }
 
   if (typeof value === "object") {
-    return <AgentObjectCard value={value} depth={depth} />
+    const entries = Object.entries(value)
+    if (entries.length === 0) return <span className="text-muted-foreground/40 italic text-xs">—</span>
+
+    return (
+      <div className="space-y-4 my-1">
+        {entries.map(([k, v]) => {
+          const isComplex = typeof v === "object" && v !== null
+          if (isComplex) {
+            return (
+              <div key={k} className="mt-4 first:mt-0">
+                <span className="text-sm font-semibold text-foreground block mb-2">{friendlyLabel(k)}</span>
+                <AgentValue value={v} />
+              </div>
+            )
+          }
+          return (
+            <div key={k} className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4 border-b border-border/20 last:border-0 pb-3 last:pb-0">
+              <span className="text-sm font-medium text-muted-foreground min-w-[180px] pt-0.5">{friendlyLabel(k)}</span>
+              <div className="text-sm flex-1 text-foreground"><AgentValue value={v} /></div>
+            </div>
+          )
+        })}
+      </div>
+    )
   }
 
-  return <span className="text-foreground text-sm">{String(value)}</span>
-}
-
-function AgentObjectCard({ value, depth = 0 }: { value: Record<string, any>; depth?: number }) {
-  const [collapsed, setCollapsed] = useState(depth > 0)
-  const entries = Object.entries(value)
-  if (entries.length === 0) return <span className="text-muted-foreground/50 italic text-xs">empty object</span>
-
-  const label = (value.name || value.title || value.company || value.feature || "") as string
-
-  return (
-    <div className={cn("rounded-lg border border-border/50 bg-muted/20", depth === 0 ? "" : "")}>
-      {depth > 0 && label && (
-        <button
-          onClick={() => setCollapsed(c => !c)}
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-muted/40 rounded-lg transition-colors"
-        >
-          {collapsed ? <ChevronRightIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
-          <span className="truncate">{label}</span>
-        </button>
-      )}
-      {!collapsed && (
-        <div className={cn("space-y-2", depth > 0 ? "px-3 pb-3" : "")}>
-          {entries.map(([k, v]) => (
-            <div key={k} className={cn("grid gap-1", typeof v === "object" && v !== null ? "grid-cols-1" : "grid-cols-[140px_1fr] items-start gap-3")}>
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-0.5 break-all">
-                {k.replace(/_/g, " ")}
-              </span>
-              <div className="min-w-0">
-                <AgentValueRenderer value={v} depth={depth + 1} />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
+  return <span className="text-foreground">{String(value)}</span>
 }
 
 function AgentDataSection({ data }: { data: Record<string, any> }) {
@@ -165,25 +218,25 @@ function AgentDataSection({ data }: { data: Record<string, any> }) {
   if (entries.length === 0) return null
 
   return (
-    <SectionCard icon={<Database className="h-4 w-4 text-purple-400" />} iconBg="bg-purple-500/20" title="Raw Agent Data" subtitle="Exactly what the browser agent extracted — unfiltered">
-      <div className="space-y-4">
-        {entries.map(([key, val]) => {
-          const isComplex = typeof val === "object" && val !== null
-          return (
-            <div key={key} className="rounded-lg border border-border bg-muted/20 overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-border/50 bg-muted/40">
-                <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                  {key.replace(/_/g, " ")}
-                </span>
-              </div>
-              <div className="p-4">
-                <AgentValueRenderer value={val} depth={0} />
-              </div>
-            </div>
-          )
-        })}
+    <div className="rounded-xl border border-border bg-card p-6">
+      <div className="mb-6">
+        <h3 className="flex items-center gap-2 font-semibold text-foreground">
+          <div className="rounded-lg bg-info/20 p-2 text-info">
+            <Database className="h-4 w-4" />
+          </div>
+          Agent Findings
+        </h3>
+        <p className="mt-1 text-xs text-muted-foreground ml-10">Data dynamically extracted by the AI</p>
       </div>
-    </SectionCard>
+      <div className="space-y-8 divide-y divide-border/40 text-sm">
+        {entries.map(([key, val]) => (
+          <div key={key} className="pt-8 first:pt-0">
+            <h4 className="mb-4 text-base font-bold text-foreground tracking-tight">{friendlyLabel(key)}</h4>
+            <AgentValue value={val} />
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -420,9 +473,9 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                         const status = row.our_product?.toLowerCase()
                         const badge =
                           status === "yes" ? "bg-success/20 text-success" :
-                          status === "partial" ? "bg-warning/20 text-warning" :
-                          status === "no" ? "bg-destructive/20 text-destructive" :
-                          "bg-muted text-muted-foreground"
+                            status === "partial" ? "bg-warning/20 text-warning" :
+                              status === "no" ? "bg-destructive/20 text-destructive" :
+                                "bg-muted text-muted-foreground"
                         return (
                           <tr key={i} className="border-b border-border/50 hover:bg-muted/10">
                             <td className="py-3 px-3 font-medium text-foreground">{row.feature}</td>
@@ -448,7 +501,7 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                   {report.customer_reviews!.map((review, i) => {
                     const sentColor =
                       review.sentiment === "Positive" ? "text-success" :
-                      review.sentiment === "Negative" ? "text-destructive" : "text-warning"
+                        review.sentiment === "Negative" ? "text-destructive" : "text-warning"
                     return (
                       <div key={i} className="rounded-lg border border-border bg-muted/20 p-4">
                         <div className="flex items-center justify-between mb-2">
@@ -579,34 +632,34 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                   {competitorList.map((comp, i) => {
                     const c = comp as { name: string; url: string; description: string; threat_level?: string; key_differentiator?: string; pricing_summary?: string }
                     return (
-                    <div key={i} className="rounded-lg border border-border bg-muted/20 p-3">
-                      <div className="flex items-center justify-between mb-1.5 gap-2">
-                        <span className="font-medium text-foreground text-sm truncate flex-1">{c.name}</span>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {c.threat_level && (
-                            <span className={cn("rounded-md px-1.5 py-0.5 text-xs font-bold", getThreatBadge(c.threat_level))}>
-                              {c.threat_level}
-                            </span>
-                          )}
-                          <a href={c.url} target="_blank" rel="noopener noreferrer" className="text-info hover:text-info/80">
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
+                      <div key={i} className="rounded-lg border border-border bg-muted/20 p-3">
+                        <div className="flex items-center justify-between mb-1.5 gap-2">
+                          <span className="font-medium text-foreground text-sm truncate flex-1">{c.name}</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {c.threat_level && (
+                              <span className={cn("rounded-md px-1.5 py-0.5 text-xs font-bold", getThreatBadge(c.threat_level))}>
+                                {c.threat_level}
+                              </span>
+                            )}
+                            <a href={c.url} target="_blank" rel="noopener noreferrer" className="text-info hover:text-info/80">
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          </div>
                         </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed mb-1">{c.description}</p>
+                        {c.key_differentiator && (
+                          <p className="text-xs text-warning mt-1.5 flex items-start gap-1">
+                            <Zap className="h-3 w-3 shrink-0 mt-0.5" />
+                            {c.key_differentiator}
+                          </p>
+                        )}
+                        {c.pricing_summary && c.pricing_summary !== "Not found" && (
+                          <p className="text-xs text-muted-foreground mt-1.5 flex items-start gap-1">
+                            <DollarSign className="h-3 w-3 shrink-0 mt-0.5" />
+                            {c.pricing_summary}
+                          </p>
+                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed mb-1">{c.description}</p>
-                      {c.key_differentiator && (
-                        <p className="text-xs text-warning mt-1.5 flex items-start gap-1">
-                          <Zap className="h-3 w-3 shrink-0 mt-0.5" />
-                          {c.key_differentiator}
-                        </p>
-                      )}
-                      {c.pricing_summary && c.pricing_summary !== "Not found" && (
-                        <p className="text-xs text-muted-foreground mt-1.5 flex items-start gap-1">
-                          <DollarSign className="h-3 w-3 shrink-0 mt-0.5" />
-                          {c.pricing_summary}
-                        </p>
-                      )}
-                    </div>
                     )
                   })}
                 </div>
