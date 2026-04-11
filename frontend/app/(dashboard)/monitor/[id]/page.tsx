@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { supabase } from "@/lib/supabaseClient"
 
 interface ChangeItem {
   type: string
@@ -71,36 +72,22 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     const load = async () => {
-      // Try backend first
       try {
-        const res = await fetch(`http://localhost:8000/api/monitors/${id}`)
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.id) return
+
+        const res = await fetch(`http://localhost:8000/api/monitors/${id}`, {
+          headers: { 'X-User-ID': session.user.id }
+        })
         const d = await res.json()
         if (d && !d.error) {
           setMonitor(d)
-          // Sync live data back to localStorage
-          const saved = localStorage.getItem('mirror_monitors')
-          if (saved) {
-            const list = JSON.parse(saved)
-            const updated = list.map((m: any) =>
-              m.id === id ? { ...m, status: d.status, runs: d.runs, insights: d.insights, lastRunAt: d.lastRunAt, runCount: d.runCount } : m
-            )
-            localStorage.setItem('mirror_monitors', JSON.stringify(updated))
-          }
-          setIsLoading(false)
-          return
         }
-      } catch {}
-
-      // Fallback: load from localStorage
-      const saved = localStorage.getItem('mirror_monitors')
-      if (saved) {
-        const list = JSON.parse(saved)
-        const local = list.find((m: any) => m.id === id)
-        if (local) {
-          setMonitor(local)
-        }
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setIsLoading(false)
       }
-      setIsLoading(false)
     }
     load()
     const iv = globalThis.setInterval(load, 3000)
@@ -108,20 +95,24 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
   }, [id])
 
   const handleStart = async () => {
-    await fetch(`http://localhost:8000/api/monitors/${id}/start`, { method: "POST" }).catch(() => {})
-    const saved = localStorage.getItem('mirror_monitors')
-    if (saved) {
-      const list = JSON.parse(saved)
-      localStorage.setItem('mirror_monitors', JSON.stringify(list.map((m: any) => m.id === id ? { ...m, status: "running" } : m)))
-    }
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) return
+      await fetch(`http://localhost:8000/api/monitors/${id}/start`, { 
+        method: "POST",
+        headers: { 'X-User-ID': session.user.id }
+      })
+    } catch {}
   }
   const handleStop = async () => {
-    await fetch(`http://localhost:8000/api/monitors/${id}/stop`, { method: "POST" }).catch(() => {})
-    const saved = localStorage.getItem('mirror_monitors')
-    if (saved) {
-      const list = JSON.parse(saved)
-      localStorage.setItem('mirror_monitors', JSON.stringify(list.map((m: any) => m.id === id ? { ...m, status: "stopped" } : m)))
-    }
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) return
+      await fetch(`http://localhost:8000/api/monitors/${id}/stop`, { 
+        method: "POST",
+        headers: { 'X-User-ID': session.user.id }
+      })
+    } catch {}
   }
 
   if (isLoading || !monitor) {

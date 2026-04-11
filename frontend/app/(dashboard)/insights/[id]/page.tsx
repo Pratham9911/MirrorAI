@@ -5,13 +5,14 @@ import Link from "next/link"
 import {
   ArrowLeft, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2,
   Lightbulb, Target, ExternalLink, Calendar, Building2, Tag,
-  BarChart3, Shield, Zap, Layers, Users,
+  BarChart3, BarChart2, Shield, Zap, Layers, Users,
   DollarSign, GitCompare, AlertOctagon, FlameKindling, Quote,
   Database
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton, SkeletonCard } from "@/components/skeleton-loader"
 import { cn } from "@/lib/utils"
+import { supabase } from "@/lib/supabaseClient"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Recommendation {
@@ -248,15 +249,17 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     async function loadData() {
-      const saved = localStorage.getItem('mirror_insights')
-      if (saved) {
-        const insights = JSON.parse(saved)
-        const found = insights.find((i: any) => i.id === id)
-        if (found) { setReport(found); setIsLoading(false); return }
-      }
       try {
-        const res = await fetch(`http://localhost:8000/api/insights/${id}`)
-        if (res.ok) { const data = await res.json(); setReport(data) }
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.id) return
+
+        const res = await fetch(`http://localhost:8000/api/insights/${id}`, {
+          headers: { 'X-User-ID': session.user.id }
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setReport(data)
+        }
       } catch (e) {
         console.error("Failed to load insight:", e)
       } finally {
@@ -335,39 +338,65 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
                 </div>
               </div>
             )}
+            {/* 2. Score Comparison */}
+            {report.score_comparison && (
+              <SectionCard
+                icon={<BarChart2 className="h-4 w-4 text-purple-500" />}
+                iconBg="bg-purple-500/20"
+                title="Competitive Score Comparison"
+                subtitle="Benchmarked against the top rival"
+              >
+                <div className="space-y-6 pt-2">
+                  <div className="flex items-center justify-center gap-8 border-b border-border pb-4">
+                    <div className="text-center">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold mb-1">Our Score</p>
+                      <span className="text-3xl font-extrabold text-success">{report.score_comparison.our_overall_score ?? 0}</span>
+                    </div>
+                    <div className="text-xl font-bold text-muted-foreground/30">VS</div>
+                    <div className="text-center">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold mb-1">Rival Score</p>
+                      <span className="text-3xl font-extrabold text-warning">{report.score_comparison.competitor_overall_score ?? 0}</span>
+                    </div>
+                  </div>
 
-            {/* 2. Score Breakdown */}
-            {sb && (
-              <SectionCard icon={<BarChart3 className="h-4 w-4 text-info" />} iconBg="bg-info/20" title="Score Breakdown">
-                <div className="space-y-4">
-                  {[
-                    { label: "Product Strength", key: "product_strength", max: 25 },
-                    { label: "Market Gap Opportunity", key: "market_gap", max: 25 },
-                    { label: "Competitor Threat", key: "competitor_threat", max: 25 },
-                    { label: "Data Certainty", key: "data_certainty", max: 25 },
-                  ].map(({ label, key, max }) => {
-                    const val = (sb as any)[key] ?? 0
-                    const pct = Math.round((val / max) * 100)
-                    const color = pct >= 70 ? "bg-success" : pct >= 40 ? "bg-warning" : "bg-destructive"
+                  {(report.score_comparison.criteria || []).map((c: any, idx: number) => {
+                    const ourPct = Math.min(100, Math.max(0, c.our_score || 0))
+                    const rivalPct = Math.min(100, Math.max(0, c.competitor_score || 0))
+                    
                     return (
-                      <div key={key}>
-                        <div className="flex items-center justify-between mb-1.5 text-sm">
-                          <span className="text-muted-foreground">{label}</span>
-                          <span className="font-semibold text-foreground">{val} / {max}</span>
+                      <div key={idx} className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-semibold text-foreground">{c.name}</span>
+                          <span className="text-xs font-medium text-muted-foreground">{ourPct} vs {rivalPct}</span>
                         </div>
-                        <div className="h-2 rounded-full bg-muted overflow-hidden">
-                          <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${pct}%` }} />
+                        
+                        {/* Comparison Bars */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-3">
+                            <span className="w-8 text-[10px] uppercase font-bold text-success/80">Us</span>
+                            <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
+                              <div className="h-full rounded-full bg-success transition-all" style={{ width: `${ourPct}%` }} />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="w-8 text-[10px] uppercase font-bold text-warning/80">Rival</span>
+                            <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
+                              <div className="h-full rounded-full bg-warning transition-all" style={{ width: `${rivalPct}%` }} />
+                            </div>
+                          </div>
                         </div>
+
+                        {c.rationale && (
+                          <p className="text-xs text-muted-foreground italic leading-relaxed pt-1">
+                            {c.rationale}
+                          </p>
+                        )}
                       </div>
                     )
                   })}
-                  {sb.rationale && (
-                    <p className="mt-2 text-sm text-muted-foreground italic border-t border-border pt-3">{sb.rationale}</p>
-                  )}
                 </div>
               </SectionCard>
             )}
-
             {/* 3. Strengths & Weaknesses */}
             <div className="grid gap-6 md:grid-cols-2">
               <SectionCard

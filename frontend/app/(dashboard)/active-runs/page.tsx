@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { SkeletonBrowser, SkeletonSignal, SkeletonTerminal, Skeleton } from "@/components/skeleton-loader"
 import { cn } from "@/lib/utils"
+import { supabase } from "@/lib/supabaseClient"
 
 interface ActiveThread {
   id: string
@@ -85,40 +86,14 @@ export default function ActiveRunsPage() {
   useEffect(() => {
     const fetchRuns = async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/runs')
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.id) return
+
+        const res = await fetch('http://localhost:8000/api/runs', {
+          headers: { 'X-User-ID': session.user.id }
+        })
         const data = await res.json()
         
-        // Check for newly completed runs (status "idle") and sync to localStorage
-        for (const run of data) {
-          if (run.status === "idle") {
-            // 1. Fetch the completed insight and save to localStorage
-            try {
-              const insightRes = await fetch(`http://localhost:8000/api/insights/${run.id}`)
-              if (insightRes.ok) {
-                const insight = await insightRes.json()
-                if (insight) {
-                  const saved = localStorage.getItem('mirror_insights')
-                  const existing = saved ? JSON.parse(saved) : []
-                  if (!existing.find((i: any) => i.id === insight.id)) {
-                    existing.push(insight)
-                    localStorage.setItem('mirror_insights', JSON.stringify(existing))
-                  }
-                }
-              }
-            } catch {}
-
-            // 2. Update thread status in localStorage from "running" to "completed"
-            const savedThreads = localStorage.getItem('mirror_threads')
-            if (savedThreads) {
-              const threads = JSON.parse(savedThreads)
-              const updated = threads.map((t: any) => 
-                t.id === run.id ? { ...t, status: "completed" } : t
-              )
-              localStorage.setItem('mirror_threads', JSON.stringify(updated))
-            }
-          }
-        }
-
         const activeData = data.filter((t: ActiveThread) => t.status !== "idle")
         setRuns(activeData)
         if (activeData.length > 0) {
@@ -155,17 +130,17 @@ export default function ActiveRunsPage() {
   if (isLoading) {
     return (
       <div className="h-full w-full overflow-hidden bg-background flex flex-col">
-        <div className="flex-1 flex min-h-0">
-          <div className="w-64 shrink-0 border-r border-border p-4 space-y-3 overflow-hidden">
+        <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-y-auto lg:overflow-hidden">
+          <div className="w-full lg:w-64 shrink-0 lg:border-r border-b lg:border-b-0 border-border p-4 space-y-3 lg:overflow-hidden">
             <Skeleton className="h-6 w-32 mb-4" />
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-20 rounded-xl" />
             ))}
           </div>
-          <div className="flex-1 min-w-0 p-4 overflow-hidden">
+          <div className="w-full lg:flex-1 min-w-0 p-4 min-h-[400px] lg:min-h-0 lg:overflow-hidden">
             <SkeletonBrowser />
           </div>
-          <div className="w-72 shrink-0 border-l border-border p-4 space-y-3 overflow-hidden">
+          <div className="w-full lg:w-72 shrink-0 lg:border-l border-t lg:border-t-0 border-border p-4 space-y-3 lg:overflow-hidden">
             <Skeleton className="h-6 w-24 mb-4" />
             {Array.from({ length: 4 }).map((_, i) => (
               <SkeletonSignal key={i} />
@@ -183,14 +158,14 @@ export default function ActiveRunsPage() {
   if (runs.length === 0) {
     return (
       <div className="h-full w-full overflow-hidden bg-background flex flex-col">
-        <div className="flex-1 flex min-h-0">
-          <div className="w-64 shrink-0 border-r border-border p-4 space-y-3 overflow-hidden">
+        <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-y-auto lg:overflow-hidden">
+          <div className="w-full lg:w-64 shrink-0 lg:border-r border-b lg:border-b-0 border-border p-4 space-y-3 lg:overflow-hidden">
             <Skeleton className="h-6 w-32 mb-4" />
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-20 rounded-xl" />
             ))}
           </div>
-          <div className="flex-1 min-w-0 p-4 relative overflow-hidden flex items-center justify-center">
+          <div className="w-full lg:flex-1 min-w-0 p-4 relative flex items-center justify-center min-h-[400px] lg:min-h-0 lg:overflow-hidden">
             <div className="absolute inset-4 opacity-30 pointer-events-none overflow-hidden">
               <SkeletonBrowser />
             </div>
@@ -208,7 +183,7 @@ export default function ActiveRunsPage() {
               </Link>
             </div>
           </div>
-          <div className="w-72 shrink-0 border-l border-border p-4 space-y-3 overflow-hidden">
+          <div className="w-full lg:w-72 shrink-0 lg:border-l border-t lg:border-t-0 border-border p-4 space-y-3 lg:overflow-hidden">
             <Skeleton className="h-6 w-24 mb-4" />
             {Array.from({ length: 4 }).map((_, i) => (
               <SkeletonSignal key={i} />
@@ -227,10 +202,10 @@ export default function ActiveRunsPage() {
     <div className="h-full w-full overflow-hidden bg-background flex flex-col">
 
       {/* ── Top: Three-column panel ── */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-y-auto lg:overflow-hidden">
 
         {/* Left – Thread List */}
-        <div className="w-64 shrink-0 border-r border-border bg-card/30 flex flex-col overflow-hidden">
+        <div className="w-full lg:w-64 shrink-0 lg:border-r border-b lg:border-b-0 border-border bg-card/30 flex flex-col min-h-[300px] lg:min-h-0 lg:h-full lg:overflow-hidden">
           <div className="shrink-0 border-b border-border px-4 py-3">
             <h2 className="text-sm font-semibold text-foreground">Active Threads</h2>
             <p className="text-xs text-muted-foreground">
@@ -281,7 +256,7 @@ export default function ActiveRunsPage() {
         </div>
 
         {/* Center – Live Browser Preview */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden p-4">
+        <div className="w-full lg:flex-1 min-w-0 flex flex-col p-4 min-h-[600px] lg:min-h-0 lg:overflow-hidden">
           <div className="flex-1 rounded-xl border border-border bg-card flex flex-col overflow-hidden">
             {/* Browser toolbar */}
             <div className="shrink-0 flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-3 overflow-hidden">
@@ -336,7 +311,7 @@ export default function ActiveRunsPage() {
         </div>
 
         {/* Right – Signals Panel */}
-        <div className="w-72 shrink-0 border-l border-border bg-card/30 flex flex-col overflow-hidden">
+        <div className="w-full lg:w-72 shrink-0 lg:border-l border-t lg:border-t-0 border-border bg-card/30 flex flex-col min-h-[300px] lg:min-h-0 lg:h-full lg:overflow-hidden">
           <div className="shrink-0 border-b border-border px-4 py-3">
             <h2 className="text-sm font-semibold text-foreground">Live Signals</h2>
             <p className="text-xs text-muted-foreground">{signals.length} detected</p>

@@ -70,7 +70,7 @@ export function DevelopersSection() {
             <span className="w-8 h-px bg-foreground/30" />
             Developer SDK
           </span>
-          <h2 className="text-6xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9]">
+          <h2 className="text-5xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9]">
             Code your agents.
             <br />
             <span className="text-muted-foreground">Or let them code.</span>
@@ -79,7 +79,7 @@ export function DevelopersSection() {
 
         {/* Description + Features — left half only */}
         <div
-          className={`max-w-[50%] transition-all duration-700 delay-100 ${
+          className={`w-full lg:max-w-[50%] transition-all duration-700 delay-100 ${
             isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
           }`}
         >
@@ -87,7 +87,7 @@ export function DevelopersSection() {
             A powerful SDK for building, deploying, and orchestrating AI agents. 
             Define behaviors in code or natural language.
           </p>
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {features.map((feature, index) => (
               <div
                 key={feature.title}

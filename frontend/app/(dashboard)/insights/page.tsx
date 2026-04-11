@@ -13,6 +13,7 @@ import {
   X
 } from "lucide-react"
 import { Skeleton, SkeletonInsightCard } from "@/components/skeleton-loader"
+import { supabase } from "@/lib/supabaseClient"
 
 interface CompletedThread {
   id: string
@@ -44,44 +45,40 @@ export default function InsightsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
-    // 1. Load from localStorage
-    const saved = localStorage.getItem('mirror_insights')
-    const localInsights = saved ? JSON.parse(saved) : []
-    
-    // 2. Fetch from backend to see if any NEW ones finished
-    fetch('http://localhost:8000/api/insights')
-      .then(res => res.json())
-      .then(apiInsights => {
-        // Merge: any insight in API that isn't in localInsights becomes local
-        const newOnes = apiInsights.filter((ai: any) => !localInsights.find((li: any) => li.id === ai.id))
-        const combined = [...localInsights, ...newOnes]
+    async function loadInsights() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.id) return
+
+        const res = await fetch('http://localhost:8000/api/insights', {
+          headers: { 'X-User-ID': session.user.id }
+        })
+        const apiInsights = await res.json()
         
-        setThreads(combined.map((r: any) => ({
+        setThreads(apiInsights.map((r: any) => ({
           ...r,
-          reviewsFound: r.customer_reviews?.length || 0,
+          reviewsFound: (r.customer_reviews ?? []).length,
           competitorsAnalyzed: (r.competitor_landscape ?? r.competitors ?? []).length,
         })))
-        localStorage.setItem('mirror_insights', JSON.stringify(combined))
         setIsLoading(false)
-      })
-      .catch(() => {
-        setThreads(localInsights)
+      } catch (err) {
+        console.error(err)
         setIsLoading(false)
-      })
+      }
+    }
+    loadInsights()
   }, [])
 
   async function handleDelete(id: string) {
     setDeletingId(id)
     try {
-      // Remove from localStorage
-      const saved = localStorage.getItem('mirror_insights')
-      if (saved) {
-        const insights = JSON.parse(saved)
-        localStorage.setItem('mirror_insights', JSON.stringify(insights.filter((i: any) => i.id !== id)))
-      }
-      
-      // Also tell backend (best effort)
-      await fetch(`http://localhost:8000/api/insights/${id}`, { method: "DELETE" }).catch(() => {})
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) return
+
+      await fetch(`http://localhost:8000/api/insights/${id}`, { 
+        method: "DELETE",
+        headers: { 'X-User-ID': session.user.id }
+      })
       
       setThreads(prev => prev.filter(t => t.id !== id))
     } catch (e) {

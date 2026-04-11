@@ -80,7 +80,7 @@ export function PricingSection() {
               <span className="w-12 h-px bg-foreground/30" />
               Pricing
             </span>
-            <h2 className={`text-6xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9] transition-all duration-1000 ${
+            <h2 className={`text-5xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9] transition-all duration-1000 ${
               isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
             }`}>
               Pay for

@@ -111,7 +111,7 @@ export function IntegrationsSection() {
           <span className="w-12 h-px bg-foreground/20" />
         </span>
 
-        <h2 className={`text-6xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9] transition-all duration-1000 ${
+        <h2 className={`text-5xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9] transition-all duration-1000 ${
           isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
         }`}>
           Connect
@@ -140,7 +140,7 @@ export function IntegrationsSection() {
 
       {/* Integration grid — remonte sur l'image avec spacing mobile approprié */}
       <div className="relative z-10 mt-0 lg:-mt-24 max-w-[1400px] mx-auto px-6 lg:px-12">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-16">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-16">
           {integrations.map((integration, index) => (
             <div
               key={integration.name}

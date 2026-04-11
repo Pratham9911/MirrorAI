@@ -18,7 +18,22 @@ except Exception as e:
 
 tf_client = TinyFish(api_key=os.getenv("TINYFISH_API_KEY"))
 
+from db.database import SessionLocal
+from db import models
+from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Header
+
 router = APIRouter()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Memory-only DB for in-memory stop events (not persisted)
+stop_events = {}
 
 class MonitorCreate(BaseModel):
     id: Optional[str] = None
@@ -29,7 +44,6 @@ class MonitorCreate(BaseModel):
     intervalSeconds: int = 60
     model_config = {"extra": "allow"}
 
-monitors_db: dict = {}   # id -> monitor dict
 
 def _summarize_run_data(raw_data: dict, url: str, tags: str) -> dict:
     """Use Groq to turn raw agent JSON into structured bullet points."""
@@ -122,22 +136,21 @@ Return ONLY valid JSON."""
 
 def _monitor_worker(monitor_id: str):
     """Background worker for a single monitor session."""
-    mon = monitors_db.get(monitor_id)
-    if not mon:
+    db = SessionLocal()
+    db_mon = db.query(models.Monitor).filter(models.Monitor.id == monitor_id).first()
+    if not db_mon:
+        db.close()
         return
 
-    stop_event = mon["_stop_event"]
-    cfg = mon["config"]
+    cfg = db_mon.config
     url = cfg["url"]
     tags_str = ", ".join(cfg.get("tags", []))
     track = cfg.get("trackWhat", "").strip()
-    
+    db.close()
+
     focus_parts = []
-    if tags_str:
-        focus_parts.append(f"categories ({tags_str})")
-    if track:
-        focus_parts.append(f"specific item '{track}'")
-        
+    if tags_str: focus_parts.append(f"categories ({tags_str})")
+    if track: focus_parts.append(f"specific item '{track}'")
     focus_text = " and ".join(focus_parts) if focus_parts else "general site content"
 
     goal = (
@@ -148,136 +161,145 @@ def _monitor_worker(monitor_id: str):
         f"Return the data in a clean, structured JSON format."
     )
 
-    while not stop_event.is_set():
+    while True:
+        db = SessionLocal()
+        db_mon = db.query(models.Monitor).filter(models.Monitor.id == monitor_id).first()
+        if not db_mon or db_mon.status != "running":
+            db.close()
+            break
+        
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        mon["runCount"] = mon.get("runCount", 0) + 1
-        print(f"[monitor:{monitor_id[:8]}] Scan #{mon['runCount']} at {ts}")
+        db_mon.run_count += 1
+        print(f"[monitor:{monitor_id[:8]}] Scan #{db_mon.run_count} at {ts}")
 
         # 1. Run agent
         raw_data = {}
         try:
-            headers = {
-                "X-API-Key": os.getenv("TINYFISH_API_KEY"),
-                "Content-Type": "application/json"
-            }
+            headers = {"X-API-Key": os.getenv("TINYFISH_API_KEY"), "Content-Type": "application/json"}
             payload = {"url": url, "goal": goal}
             resp = requests.post("https://agent.tinyfish.ai/v1/automation/run", headers=headers, json=payload, timeout=300)
             resp.raise_for_status()
-            
-            data = resp.json()
-            raw_data = data.get("result", {})
+            raw_data = resp.json().get("result", {})
         except Exception as e:
-            print(f"[monitor:{monitor_id[:8]}] agent error: {e}")
             raw_data = {"error": str(e)}
 
-        # 2. Generate NLP summary of this run
+        # 2. Generate summary
         summary = _summarize_run_data(raw_data, url, tags_str)
+        run_entry = {"timestamp": ts, "data": raw_data, "summary": summary, "runNumber": db_mon.run_count}
 
-        run_entry = {
-            "timestamp": ts,
-            "data": raw_data,
-            "summary": summary,
-            "runNumber": mon["runCount"],
-        }
+        # 3. Store run
+        if not db_mon.runs: db_mon.runs = []
+        new_runs = list(db_mon.runs) + [run_entry]
+        db_mon.runs = new_runs[-10:] # keep last 10
+        db_mon.last_run_at = datetime.now()
 
-        # 3. Store run (Keep full history now)
-        mon["runs"].append(run_entry)
-        mon["lastRunAt"] = ts
+        # 4. Insights
+        if len(new_runs) >= 2:
+            prev_run = new_runs[-2]
+            curr_run = new_runs[-1]
+            db_mon.insights = _generate_diff_insights(prev_run, curr_run, url)
 
-        # 4. If at least 2 runs exist, generate diff between the MOST RECENT two
-        if len(mon["runs"]) >= 2:
-            prev_run = mon["runs"][-2]
-            curr_run = mon["runs"][-1]
-            diff = _generate_diff_insights(prev_run, curr_run, url)
-            mon["insights"] = diff
-            print(f"[monitor:{monitor_id[:8]}] Changes: {diff.get('summary', 'N/A')}")
+        db.commit()
+        db.close()
 
-        # 5. Wait for next interval
+        # 5. Wait
         interval = cfg.get("intervalSeconds", 60)
-        if stop_event.wait(timeout=interval):
+        evt = stop_events.get(monitor_id)
+        if evt and evt.wait(timeout=interval):
             break
-
-    mon["status"] = "stopped"
-    print(f"[monitor:{monitor_id[:8]}] Stopped.")
+        elif not evt:
+            import time
+            time.sleep(interval)
+            
+    db = SessionLocal()
+    db_mon = db.query(models.Monitor).filter(models.Monitor.id == monitor_id).first()
+    if db_mon:
+        db_mon.status = "stopped"
+        db.commit()
+    db.close()
 
 # ── Monitor API endpoints ────────────────────────────────────────────────────
 
 @router.post("/monitors")
-def create_monitor(data: MonitorCreate):
+def create_monitor(data: MonitorCreate, db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    if not x_user_id: return {"error": "Unauthorized"}
     mid = data.id if data.id else str(uuid.uuid4())
-    mon = {
-        "id": mid,
-        "name": data.name,
-        "config": data.model_dump(),
-        "status": "idle",       # idle | running | stopped
-        "runs": [],
-        "insights": {},
-        "lastRunAt": None,
-        "runCount": 0,
-        "createdAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "_stop_event": None,
-    }
-    monitors_db[mid] = mon
-    return _serialize_monitor(mon)
+    db_mon = models.Monitor(
+        id=mid,
+        user_id=x_user_id,
+        name=data.name,
+        config=data.model_dump(),
+        status="idle",
+        runs=[],
+        insights={},
+        run_count=0
+    )
+    db.add(db_mon)
+    db.commit()
+    db.refresh(db_mon)
+    return _serialize_monitor(db_mon)
 
 @router.get("/monitors")
-def get_all_monitors():
-    return [_serialize_monitor(m) for m in monitors_db.values()]
+def get_all_monitors(db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    if not x_user_id: return []
+    monitors = db.query(models.Monitor).filter(models.Monitor.user_id == x_user_id).all()
+    return [_serialize_monitor(m) for m in monitors]
 
 @router.get("/monitors/{mid}")
-def get_monitor(mid: str):
-    mon = monitors_db.get(mid)
-    if not mon:
-        return {"error": "not found"}
+def get_monitor(mid: str, db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    mon = db.query(models.Monitor).filter(models.Monitor.id == mid, models.Monitor.user_id == x_user_id).first()
+    if not mon: return {"error": "not found"}
     return _serialize_monitor(mon)
 
 @router.post("/monitors/{mid}/start")
-def start_monitor_session(mid: str):
-    mon = monitors_db.get(mid)
-    if not mon:
-        return {"error": "not found"}
+def start_monitor_session(mid: str, db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    mon = db.query(models.Monitor).filter(models.Monitor.id == mid, models.Monitor.user_id == x_user_id).first()
+    if not mon: return {"error": "not found"}
 
-    # Stop previous if running
-    if mon.get("_stop_event"):
-        mon["_stop_event"].set()
+    if stop_events.get(mid):
+        stop_events[mid].set()
 
     stop_evt = threading.Event()
-    mon["_stop_event"] = stop_evt
-    mon["status"] = "running"
-    # Keep historical data!
+    stop_events[mid] = stop_evt
+    mon.status = "running"
+    db.commit()
     threading.Thread(target=_monitor_worker, args=(mid,), daemon=True).start()
     return {"success": True}
 
 @router.post("/monitors/{mid}/stop")
-def stop_monitor_session(mid: str):
-    mon = monitors_db.get(mid)
-    if not mon:
-        return {"error": "not found"}
-    if mon.get("_stop_event"):
-        mon["_stop_event"].set()
-        mon["_stop_event"] = None  # Clear it so it's not 'done' the next time we start
-    mon["status"] = "stopped"
+def stop_monitor_session(mid: str, db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    mon = db.query(models.Monitor).filter(models.Monitor.id == mid, models.Monitor.user_id == x_user_id).first()
+    if not mon: return {"error": "not found"}
+    if stop_events.get(mid):
+        stop_events[mid].set()
+        del stop_events[mid]
+    mon.status = "stopped"
+    db.commit()
     return {"success": True}
 
 @router.delete("/monitors/{mid}")
-def delete_monitor(mid: str):
-    mon = monitors_db.get(mid)
+def delete_monitor(mid: str, db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    mon = db.query(models.Monitor).filter(models.Monitor.id == mid, models.Monitor.user_id == x_user_id).first()
     if mon:
-        if mon.get("_stop_event"):
-            mon["_stop_event"].set()
-        del monitors_db[mid]
+        if stop_events.get(mid):
+            stop_events[mid].set()
+        db.delete(mon)
+        db.commit()
     return {"success": True}
 
-def _serialize_monitor(m: dict) -> dict:
+def _serialize_monitor(m) -> dict:
     """Strip internal fields for API response."""
+    # Handle both dict (if any remains) and SQLAlchemy model
+    if isinstance(m, dict):
+        return m
     return {
-        "id": m["id"],
-        "name": m["name"],
-        "config": m["config"],
-        "status": m["status"],
-        "runs": m["runs"],
-        "insights": m["insights"],
-        "lastRunAt": m["lastRunAt"],
-        "runCount": m.get("runCount", 0),
-        "createdAt": m.get("createdAt", ""),
+        "id": m.id,
+        "name": m.name,
+        "config": m.config,
+        "status": m.status,
+        "runs": m.runs,
+        "insights": m.insights,
+        "lastRunAt": m.last_run_at.strftime("%Y-%m-%d %H:%M:%S") if m.last_run_at else None,
+        "runCount": m.run_count,
+        "createdAt": m.created_at.strftime("%Y-%m-%d %H:%M:%S") if m.created_at else "",
     }

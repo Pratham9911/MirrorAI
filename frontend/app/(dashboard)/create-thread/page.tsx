@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { supabase } from "@/lib/supabaseClient"
 
 interface Thread {
   id: string
@@ -103,14 +104,16 @@ export default function CreateThreadPage() {
   const [searchQuery, setSearchQuery] = useState("")
 
   useEffect(() => {
-    // 1. Load from localStorage
-    const saved = localStorage.getItem('mirror_threads')
-    const localThreads = saved ? JSON.parse(saved) : []
-    
-    // 2. Try to sync with backend (only for transient statuses like "running")
-    fetch('http://localhost:8000/api/threads')
-      .then(r => r.json())
-      .then(apiThreads => {
+    async function loadThreads() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.id) return
+
+        const resp = await fetch('http://localhost:8000/api/threads', {
+          headers: { 'X-User-ID': session.user.id }
+        })
+        const apiThreads = await resp.json()
+        
         // Normalize helper
         const normalize = (t: any) => ({
           ...t,
@@ -118,21 +121,14 @@ export default function CreateThreadPage() {
           product: t.product || t.productName || "Unknown"
         })
 
-        const normalizedLocal = localThreads.map(normalize)
-        const normalizedApi = apiThreads.map(normalize)
-
-        const synced = normalizedLocal.map((t: Thread) => {
-          const apiMatch = normalizedApi.find((at: any) => at.id === t.id)
-          return apiMatch ? { ...t, status: apiMatch.status } : t
-        })
-        setThreads(synced)
-        localStorage.setItem('mirror_threads', JSON.stringify(synced))
+        setThreads(apiThreads.map(normalize))
         setIsLoading(false)
-      })
-      .catch(() => {
-        setThreads(localThreads)
+      } catch (err) {
+        console.error(err)
         setIsLoading(false)
-      })
+      }
+    }
+    loadThreads()
   }, [])
 
   const filteredThreads = threads.filter(thread => {
@@ -143,29 +139,34 @@ export default function CreateThreadPage() {
   })
 
   const handleDelete = async (id: string) => {
-    const updated = threads.filter(t => t.id !== id)
-    setThreads(updated)
-    localStorage.setItem('mirror_threads', JSON.stringify(updated))
-    // Also tell backend (best effort)
-    fetch(`http://localhost:8000/api/threads/${id}`, { method: 'DELETE' }).catch(() => {})
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) return
+
+      await fetch(`http://localhost:8000/api/threads/${id}`, { 
+        method: 'DELETE',
+        headers: { 'X-User-ID': session.user.id }
+      })
+      setThreads(prev => prev.filter(t => t.id !== id))
+    } catch (e) { console.error(e) }
   }
 
   const handleRun = async (id: string) => {
     try {
-      // Find full thread data to send to backend (stateless runner)
-      const threadToRun = JSON.parse(localStorage.getItem('mirror_threads') || '[]').find((t: any) => t.id === id)
-      
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) return
+
       await fetch(`http://localhost:8000/api/threads/${id}/run`, { 
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(threadToRun)
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-ID': session.user.id
+        }
       })
       
-      const updated = threads.map(t => 
+      setThreads(prev => prev.map(t => 
         t.id === id ? { ...t, status: "running" as const } : t
-      )
-      setThreads(updated)
-      localStorage.setItem('mirror_threads', JSON.stringify(updated))
+      ))
     } catch (e) { console.error(e) }
   }
 
@@ -190,7 +191,7 @@ export default function CreateThreadPage() {
   return (
     <div className="min-h-screen bg-background p-8">
       {/* Header */}
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">Create Thread</h1>
           <p className="mt-1 text-muted-foreground">
@@ -220,7 +221,7 @@ export default function CreateThreadPage() {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="rounded-xl border border-border bg-card overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="border-b border-border bg-muted/30">

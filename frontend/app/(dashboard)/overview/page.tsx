@@ -110,7 +110,7 @@ export default function OverviewPage() {
       </div>
 
       {/* ─── Live Stats ─────────────────────────────────────────────── */}
-      <div className="mb-12 grid gap-4 grid-cols-2 md:grid-cols-4">
+      <div className="mb-12 grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
         <div className="rounded-2xl border border-border bg-card p-5 group transition-all hover:bg-muted/30">
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Active Monitors</p>
           <div className="flex items-end justify-between">
@@ -183,7 +183,7 @@ export default function OverviewPage() {
       </div>
 
       {/* ─── Recent signals indicator ───────────────────────────────── */}
-      <div className="mt-12 rounded-3xl border border-divider-20 bg-muted/10 p-8 flex items-center justify-between">
+      <div className="mt-12 rounded-3xl border border-divider-20 bg-muted/10 p-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
         <div className="flex items-center gap-4">
           <div className="rounded-full h-12 w-12 bg-success/10 border border-success/20 flex items-center justify-center">
              <Activity className="h-5 w-5 text-success" />

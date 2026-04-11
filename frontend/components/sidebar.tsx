@@ -9,9 +9,15 @@ import {
   BarChart3,
   Hexagon,
   Radar,
-  LogOut
+  LogOut,
+  X
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+interface SidebarProps {
+  isMobileOpen?: boolean;
+  setIsMobileOpen?: (val: boolean) => void;
+}
 
 const navItems = [
   {
@@ -46,22 +52,33 @@ const navItems = [
   },
 ]
 
-export function Sidebar() {
+export function Sidebar({ isMobileOpen, setIsMobileOpen }: SidebarProps = {}) {
   const pathname = usePathname()
 
   return (
-    <aside className="fixed left-0 top-0 z-50 flex h-screen w-64 flex-col border-r border-border bg-sidebar">
-      {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b border-border px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground">
-          <Hexagon className="h-5 w-5 text-background" strokeWidth={2.5} />
+    <>
+      <aside className={cn(
+        "fixed left-0 top-0 z-50 flex h-screen w-64 flex-col border-r border-border bg-sidebar transition-transform duration-300 md:translate-x-0 flex-shrink-0",
+        isMobileOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        {/* Logo */}
+        <div className="flex h-16 items-center border-b border-border px-6 justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground">
+              <Hexagon className="h-5 w-5 text-background" strokeWidth={2.5} />
+            </div>
+            <span className="text-xl font-semibold tracking-tight text-foreground">
+              MirrorAI
+            </span>
+          </div>
+          {setIsMobileOpen && (
+            <button className="md:hidden p-1 rounded-md text-muted-foreground hover:bg-muted" onClick={() => setIsMobileOpen(false)}>
+              <X className="h-5 w-5" />
+            </button>
+          )}
         </div>
-        <span className="text-xl font-semibold tracking-tight text-foreground">
-          MirrorAI
-        </span>
-      </div>
 
-      {/* Navigation */}
+        {/* Navigation */}
       <nav className="flex-1 space-y-1 p-4">
         {navItems.map((item) => {
           const isActive = pathname === item.href || 
@@ -69,6 +86,7 @@ export function Sidebar() {
           
           return (
             <Link
+              onClick={() => setIsMobileOpen?.(false)}
               key={item.name}
               href={item.href}
               className={cn(
@@ -109,5 +127,6 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   )
 }

@@ -61,7 +61,7 @@ export function InfrastructureSection() {
 
             {/* Titre + description empilés */}
             <div className="flex flex-col justify-center">
-              <h2 className={`text-6xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9] transition-all duration-1000 ${
+              <h2 className={`text-5xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9] transition-all duration-1000 ${
                 isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
               }`}>
                 Global by

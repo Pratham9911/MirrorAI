@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { supabase } from "@/lib/supabaseClient"
 
 interface Competitor {
   id: string
@@ -77,17 +78,17 @@ export default function NewThreadPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      const resp = await fetch('http://localhost:8000/api/threads', {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) return
+
+      await fetch('http://localhost:8000/api/threads', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-ID': session.user.id
+        },
         body: JSON.stringify({ ...formData, competitors })
       })
-      const newThread = await resp.json()
-      
-      // Save to localStorage
-      const saved = localStorage.getItem('mirror_threads')
-      const threads = saved ? JSON.parse(saved) : []
-      localStorage.setItem('mirror_threads', JSON.stringify([...threads, newThread]))
       
       router.push("/create-thread")
     } catch (err) {
@@ -122,7 +123,7 @@ export default function NewThreadPage() {
             <div className="rounded-xl border border-border bg-card p-6">
               <h2 className="mb-6 flex items-center gap-2 text-lg font-semibold text-foreground">
                 <Package className="h-5 w-5 text-muted-foreground" />
-                Product Information
+                Your Profile / Idea
               </h2>
 
               <div className="space-y-5">
@@ -145,13 +146,13 @@ export default function NewThreadPage() {
                 <div>
                   <label className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
                     <Building2 className="h-4 w-4 text-muted-foreground" />
-                    Product Name
+                    My Idea / Product / Content
                   </label>
                   <input
                     type="text"
                     value={formData.productName}
                     onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                    placeholder="e.g., MirrorAI Pro"
+                    placeholder="e.g., My Coding Channel or MirrorAI Pro"
                     className="h-11 w-full rounded-xl border border-border bg-muted/30 px-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-muted-foreground focus:outline-none focus:ring-1 focus:ring-muted-foreground transition-all"
                   />
                 </div>
@@ -159,12 +160,12 @@ export default function NewThreadPage() {
                 {/* Description */}
                 <div>
                   <label className="mb-2 block text-sm font-medium text-foreground">
-                    Description
+                    Description (What you want to search & compare)
                   </label>
                   <textarea
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Describe what you want to monitor and analyze..."
+                    placeholder="Describe your idea and exactly what criteria you want the agent to compare..."
                     rows={4}
                     className="w-full rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-muted-foreground focus:outline-none focus:ring-1 focus:ring-muted-foreground transition-all resize-none"
                   />
@@ -222,7 +223,7 @@ export default function NewThreadPage() {
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
                   <Globe className="h-5 w-5 text-muted-foreground" />
-                  Competitors
+                  Rivals / Competitors
                 </h2>
                 <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                   {competitors.length}
@@ -260,7 +261,7 @@ export default function NewThreadPage() {
                 {competitors.length === 0 && !showCompetitorForm && (
                   <div className="rounded-lg border border-dashed border-border py-8 text-center">
                     <Globe className="mx-auto h-8 w-8 text-muted-foreground/50" />
-                    <p className="mt-2 text-sm text-muted-foreground">No competitors added</p>
+                    <p className="mt-2 text-sm text-muted-foreground">No rivals added</p>
                   </div>
                 )}
               </div>
@@ -285,7 +286,7 @@ export default function NewThreadPage() {
                   <textarea
                     value={newCompetitor.description}
                     onChange={(e) => setNewCompetitor({ ...newCompetitor, description: e.target.value })}
-                    placeholder="Short description (optional)"
+                    placeholder="Who are they and what to compare (optional)"
                     rows={2}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-muted-foreground focus:outline-none resize-none"
                   />
@@ -318,7 +319,7 @@ export default function NewThreadPage() {
                   className="w-full gap-2 rounded-xl border-dashed border-border hover:border-muted-foreground hover:bg-muted/30"
                 >
                   <Plus className="h-4 w-4" />
-                  Add Competitor
+                  Add Rival
                 </Button>
               )}
             </div>

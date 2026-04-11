@@ -54,10 +54,21 @@ def _normalize_thread(t: dict) -> dict:
     t["product"] = t["productName"]
     return t
 
-# Memory-only DBs (as requested: No backend persistence on disk)
-threads_db = {}
-active_runs_db = {}
-insights_db = {}
+from db.database import SessionLocal, engine
+from db import models
+from sqlalchemy.orm import Session
+from fastapi import Depends, Header
+
+models.Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Memory-only DBs are removed. Using Supabase instead.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -65,7 +76,7 @@ insights_db = {}
 # ─────────────────────────────────────────────────────────────────────────────
 SSE_ENDPOINT = "https://agent.tinyfish.ai/v1/automation/run-sse"
 
-def sse_worker(thread_id: str, url: str, goal: str, logs: list, signals: list) -> tuple[str, dict]:
+def sse_worker(thread_id: str, url: str, goal: str) -> tuple[str, dict]:
     """
     Hits TinyFish run-sse once.
     — Streams PROGRESS events live into logs/signals (for the UI)
@@ -74,6 +85,8 @@ def sse_worker(thread_id: str, url: str, goal: str, logs: list, signals: list) -
     """
     combined_purpose_text = ""
     run_result: dict = {}
+    logs = []
+    signals = []
 
     headers = {
         "X-API-Key": os.getenv("TINYFISH_API_KEY"),
@@ -82,6 +95,7 @@ def sse_worker(thread_id: str, url: str, goal: str, logs: list, signals: list) -
     payload = {"url": url, "goal": goal}
     current_event_type = None
 
+    db = SessionLocal()
     try:
         with requests.post(SSE_ENDPOINT, headers=headers, json=payload, stream=True, timeout=300) as resp:
             resp.raise_for_status()
@@ -90,11 +104,9 @@ def sse_worker(thread_id: str, url: str, goal: str, logs: list, signals: list) -
                     continue
                 decoded = raw_line.decode("utf-8")
 
-                # SSE protocol: "event: TYPE" or "data: {...}"
                 if decoded.startswith("event:"):
                     current_event_type = decoded.replace("event:", "").strip()
                     continue
-
                 if not decoded.startswith("data:"):
                     continue
 
@@ -108,71 +120,62 @@ def sse_worker(thread_id: str, url: str, goal: str, logs: list, signals: list) -
                 ts = datetime.now().strftime("%H:%M:%S")
 
                 if event_type == "STARTED":
-                    logs.append({
-                        "id": str(uuid.uuid4()), "timestamp": ts,
-                        "message": "Browser session started", "type": "success"
-                    })
+                    print(f"[sse:{thread_id[:8]}] STARTED")
+                    log_id = str(uuid.uuid4())
+                    db.add(models.Log(id=log_id, run_id=thread_id, message="Browser session started", type="success", timestamp=ts))
+                    db.commit()
 
                 elif event_type == "STREAMING_URL":
                     streaming_url = data.get("streaming_url", "")
-                    if thread_id in active_runs_db:
-                        active_runs_db[thread_id]["currentUrl"] = streaming_url
-                    logs.append({
-                        "id": str(uuid.uuid4()), "timestamp": ts,
-                        "message": f"Streaming at {streaming_url}", "type": "info"
-                    })
+                    print(f"[sse:{thread_id[:8]}] STREAMING_URL: {streaming_url}")
+                    run = db.query(models.Run).filter(models.Run.id == thread_id).first()
+                    if run:
+                        run.current_url = streaming_url
+                    
+                    log_id = str(uuid.uuid4())
+                    db.add(models.Log(id=log_id, run_id=thread_id, message=f"Streaming at {streaming_url}", type="info", timestamp=ts))
+                    db.commit()
 
                 elif event_type == "PROGRESS":
                     purpose = str(data.get("purpose", "Navigating..."))
                     combined_purpose_text += purpose + "\n"
-                    if thread_id in active_runs_db:
-                        active_runs_db[thread_id]["progress"] = min(
-                            90, active_runs_db[thread_id]["progress"] + 4
-                        )
-                    logs.append({
-                        "id": str(uuid.uuid4()), "timestamp": ts,
-                        "message": f"→ {purpose}", "type": "warning"
-                    })
-                    # Live signal detection
+                    
+                    run = db.query(models.Run).filter(models.Run.id == thread_id).first()
+                    if run:
+                        run.progress = min(90, (run.progress or 0) + 4)
+                        
+                    log_id = str(uuid.uuid4())
+                    db.add(models.Log(id=log_id, run_id=thread_id, message=f"→ {purpose}", type="warning", timestamp=ts))
+                    
                     pl = purpose.lower()
                     if any(k in pl for k in ["price", "cost", "plan", "pricing", "₹", "$"]):
-                        signals.insert(0, {
-                            "id": str(uuid.uuid4()), "type": "price", "title": "Pricing Info Detected",
-                            "description": f"Found pricing data: {purpose[:80]}", "time": ts
-                        })
+                        db.add(models.Signal(id=str(uuid.uuid4()), run_id=thread_id, type="price", title="Pricing Info Detected", description=f"Found pricing data: {purpose[:80]}", time=ts))
                     elif any(k in pl for k in ["hiring", "job", "career", "recruit"]):
-                        signals.insert(0, {
-                            "id": str(uuid.uuid4()), "type": "hiring", "title": "Hiring Activity Detected",
-                            "description": f"Recruitment signal: {purpose[:80]}", "time": ts
-                        })
+                        db.add(models.Signal(id=str(uuid.uuid4()), run_id=thread_id, type="hiring", title="Hiring Activity Detected", description=f"Recruitment signal: {purpose[:80]}", time=ts))
                     elif any(k in pl for k in ["feature", "launch", "new", "update", "release"]):
-                        signals.insert(0, {
-                            "id": str(uuid.uuid4()), "type": "feature", "title": "Feature / Launch Detected",
-                            "description": f"Product update signal: {purpose[:80]}", "time": ts
-                        })
+                        db.add(models.Signal(id=str(uuid.uuid4()), run_id=thread_id, type="feature", title="Feature / Launch Detected", description=f"Product update signal: {purpose[:80]}", time=ts))
+                    
+                    db.commit()
 
                 elif event_type == "COMPLETE":
-                    # This is the gold: structured result from the agent
+                    print(f"[sse:{thread_id[:8]}] COMPLETE")
                     run_result = data.get("result", {})
-                    if thread_id in active_runs_db:
-                        active_runs_db[thread_id]["progress"] = 95
-                    logs.append({
-                        "id": str(uuid.uuid4()), "timestamp": ts,
-                        "message": "Agent analysis complete ✓", "type": "success"
-                    })
-
-                elif event_type == "HEARTBEAT":
-                    pass  # keepalive, ignore
+                    run = db.query(models.Run).filter(models.Run.id == thread_id).first()
+                    if run:
+                        run.progress = 95
+                    
+                    log_id = str(uuid.uuid4())
+                    db.add(models.Log(id=log_id, run_id=thread_id, message="Agent analysis complete ✓", type="success", timestamp=ts))
+                    db.commit()
 
     except Exception as e:
+        print(f"[sse:{thread_id[:8]}] Error: {e}")
+        log_id = str(uuid.uuid4())
         ts = datetime.now().strftime("%H:%M:%S")
-        logs.append({
-            "id": str(uuid.uuid4()), "timestamp": ts,
-            "message": f"Agent error: {str(e)}", "type": "error"
-        })
-        print(f"[sse_worker] error: {e}")
-        traceback.print_exc()
-
+        db.add(models.Log(id=log_id, run_id=thread_id, message=f"Worker Error: {str(e)}", type="error", timestamp=ts))
+        db.commit()
+    finally:
+        db.close()
     return combined_purpose_text, run_result
 
 
@@ -215,19 +218,19 @@ def build_insight_with_groq(
     )
 
     prompt = f"""
-A browser AI agent analysed competitor(s) for the product described below.
+A browser AI agent analysed rival/competitor(s) for the idea/profile described below.
 The agent returned a structured JSON — it can have ANY keys/nesting (e.g. competitor_analysis,
 pricing_tiers, features, hiring_signals, customer_reviews with user/rating/comment, etc.).
 Your job: read EVERY field of that JSON and produce a Mirror intelligence report.
 
 ═══════════════════════════════════
-PRODUCT BEING ANALYSED (our product)
+IDEA / PROFILE BEING ANALYSED (us)
 ═══════════════════════════════════
 Name        : {thread['productName']}
 Thread      : {thread['threadName']}
 Description : {thread['description']}
 Focus Tags  : {tags_str or 'General competitive analysis'}
-Competitors : {competitors_str or 'Not specified — agent explored independently'}
+Rivals      : {competitors_str or 'Not specified — agent explored independently'}
 
 ═══════════════════════════════════
 AGENT EXTRACTED DATA (raw — any structure)
@@ -244,25 +247,28 @@ INTERPRETATION GUIDE
 - Look for hiring signals in any key (hiring_signals, jobs, careers, team_size, etc.)
 
 ═══════════════════════════════════
-SCORING GUIDE (conservative, data-driven only)
+SCORING GUIDE (Dynamic & Idea-Specific)
 ═══════════════════════════════════
-product_strength  (0-25): How differentiated and defensible is OUR product vs competitors found?
-market_gap        (0-25): How clearly underserved is the market our product targets?
-competitor_threat (0-25): How serious is the competitive pressure from analysed competitors?
-data_certainty    (0-25): How complete and reliable was the agent data?
-Final score = sum of four sub-scores (0-100).
+Based on the specific nature of the idea (e.g., student project vs SAAS vs local shop vs content creator), determine EXACTLY 4 highly relevant criteria to compare (e.g. 'Student Appeal', 'Content Quality', 'Market Demand', 'Pricing Models', 'UX/UI', 'Feature Depth', etc.).
+Rate OUR idea (estimated based on description) vs the COMPETITOR out of 100 for each criteria.
 
 OUTPUT SCHEMA — return ONLY this JSON:
 {{
-  "score": <0-100>,
-  "score_breakdown": {{
-    "product_strength": <0-25>,
-    "market_gap": <0-25>,
-    "competitor_threat": <0-25>,
-    "data_certainty": <0-25>,
-    "rationale": "<2-3 sentence explanation of how you reached each sub-score, citing specific data points>"
+  "score": <our_overall_score -> single 0-100 number representing us>,
+  "score_comparison": {{
+    "our_overall_score": <0-100>,
+    "competitor_overall_score": <0-100>,
+    "criteria": [
+      {{
+        "name": "<name of criteria>",
+        "our_score": <0-100>,
+        "competitor_score": <0-100>,
+        "rationale": "<1-2 sentences justifying the scores>"
+      }}
+      // exactly 4 criteria
+    ]
   }},
-  "executive_summary": "<3-4 sentences: where OUR product stands vs the competition, biggest opportunity, biggest threat — direct and data-backed>",
+  "executive_summary": "<3-4 sentences: where OUR idea stands vs the competition...>",
   "strengths": [
     "<OUR PRODUCT advantage — what we do better than competitors, e.g. 'Open-source while Competitor X is closed-source'>",
     "..."
@@ -326,50 +332,84 @@ OUTPUT SCHEMA — return ONLY this JSON:
 def process_thread(thread_id: str, thread: dict):
     print(f"[backend] Starting process_thread for {thread_id}")
     url = thread["competitors"][0]["url"] if thread.get("competitors") else "https://www.google.com"
-    logs    = active_runs_db[thread_id]["logs"]
-    signals = active_runs_db[thread_id]["signals"]
+    signals = []
 
-    comps_str = ", ".join([f"{c['name']}" for c in thread.get("competitors", [])])
-    tags_str  = ", ".join(thread.get("tags", []))
+    tags_str = ", ".join(thread.get("tags", []))
+    
+    # Ensure competitor details are passed correctly to the agent
+    competitors_info = []
+    for c in thread.get("competitors", []):
+        info = f"URL: {c.get('url')}"
+        if c.get("description"):
+            info += f" (Context: {c['description']})"
+        competitors_info.append(info)
+    comps_str = " | ".join(competitors_info)
 
-    # Single unified goal — the SSE agent does deep work AND returns structured data
     goal = (
-        f"You are a competitive intelligence researcher analysing '{thread['productName']}' , description : {thread['description']}. "
-        f"Visit the competitor site(s): {comps_str or url}. "
-        f"analyse and extract: {tags_str or 'pricing, features, reviews, positioning'}. "
-        f"Also gather customer reviews,"
-        f"extract data in short and fast"
+        f"You are a skilled researcher acting on behalf of my idea/profile: '{thread['productName']}'. "
+        f"My goal/description is: '{thread['description']}'. "
+        f"Your task is to visit the rival site(s): {comps_str or url}. "
+        f"Analyze and extract exactly what we want to compare: {tags_str or 'general info, pricing, features'}. "
+        f"Also gather customer reviews where possible. Work fast. "
+        f"Look out for their strengths and what they do well vs what I am building. "
         f"Return a comprehensive structured JSON with all findings."
     )
 
-    logs.append({"id": str(uuid.uuid4()), "timestamp": datetime.now().strftime("%H:%M:%S"), "message": "Starting Analysis...", "type": "info"})
-
     # ── ONE SSE call does the job of both stream_worker + run_worker ──
     print(f"[backend] Thread {thread_id}: Starting SSE worker (single call)")
-    combined_purpose_text, run_result = sse_worker(thread_id, url, goal, logs, signals)
+    combined_purpose_text, run_result = sse_worker(thread_id, url, goal)
     print(f"[backend] Thread {thread_id}: SSE worker finished — result keys: {list(run_result.keys()) if run_result else 'empty'}")
 
-    print(f"[backend] Thread {thread_id}: Building insight report")
+    db = SessionLocal()
     try:
         report = build_insight_with_groq(thread, combined_purpose_text, run_result, signals)
+        # We need user_id here as well
+        user_id = thread.get("user_id", "default_user")
+        
         report.update({
             "id": thread_id, "name": thread["threadName"], "product": thread["productName"],
             "description": thread["description"], "completedAt": datetime.now().strftime("%Y-%m-%d"),
             "tags": thread["tags"],
-            # Store the raw agent output verbatim — frontend renders it directly
             "agent_data": run_result,
         })
-        insights_db[thread_id] = report
-        if thread_id in threads_db: threads_db[thread_id]["status"] = "completed"
-        if thread_id in active_runs_db:
-            active_runs_db[thread_id]["status"] = "idle"
-            active_runs_db[thread_id]["progress"] = 100
-        logs.append({"id": str(uuid.uuid4()), "timestamp": datetime.now().strftime("%H:%M:%S"), "message": "Analysis Complete ✓", "type": "success"})
+        
+        # Save insight to DB
+        new_insight = models.Insight(
+            id=thread_id,
+            user_id=user_id,
+            name=report.get("name", "Report"),
+            product=report["product"],
+            score=report.get("score", 0),
+            completed_at=report["completedAt"],
+            data=report
+        )
+        db.merge(new_insight) # merge handles update if exists
+
+        # Update thread status
+        db_thread = db.query(models.Thread).filter(models.Thread.id == thread_id).first()
+        if db_thread:
+            db_thread.status = "completed"
+
+        # Update run status
+        db_run = db.query(models.Run).filter(models.Run.id == thread_id).first()
+        if db_run:
+            db_run.status = "idle"
+            db_run.progress = 100
+        
+        log_id = str(uuid.uuid4())
+        ts = datetime.now().strftime("%H:%M:%S")
+        db.add(models.Log(id=log_id, run_id=thread_id, message="Analysis Complete ✓", type="success", timestamp=ts))
+        db.commit()
         print(f"[backend] Thread {thread_id}: Processing finished successfully")
     except Exception as e:
         print(f"[backend] Thread {thread_id}: Error building report: {e}")
         traceback.print_exc()
-        if thread_id in threads_db: threads_db[thread_id]["status"] = "paused"
+        db_thread = db.query(models.Thread).filter(models.Thread.id == thread_id).first()
+        if db_thread:
+            db_thread.status = "paused"
+        db.commit()
+    finally:
+        db.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -377,64 +417,154 @@ def process_thread(thread_id: str, thread: dict):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/api/threads")
-def get_threads():
-    return list(threads_db.values())
+def get_threads(db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    if not x_user_id: return []
+    threads = db.query(models.Thread).filter(models.Thread.user_id == x_user_id).all()
+    # Normalize back for frontend
+    res = []
+    for t in threads:
+        d = {
+            "id": t.id,
+            "name": t.name,
+            "product": t.product,
+            "threadName": t.name,
+            "productName": t.product,
+            "description": t.description,
+            "status": t.status,
+            "createdAt": t.created_at.strftime("%Y-%m-%d") if t.created_at else None,
+            "competitorsCount": t.competitors_count,
+            "tags": t.tags,
+            "competitors": t.competitors
+        }
+        res.append(d)
+    return res
 
 @app.post("/api/threads")
-def create_thread(data: ThreadCreate):
+def create_thread(data: ThreadCreate, db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    if not x_user_id: return {"error": "Unauthorized"}
     tid = str(uuid.uuid4())
     t = data.model_dump()
-    t["id"] = tid
-    t["status"] = "draft"
-    t["createdAt"] = datetime.now().strftime("%Y-%m-%d")
-    t["competitorsCount"] = len(data.competitors)
     t = _normalize_thread(t)
-    threads_db[tid] = t
-    return t
+    
+    db_thread = models.Thread(
+        id=tid,
+        user_id=x_user_id,
+        name=t["threadName"],
+        product=t["productName"],
+        description=t["description"],
+        status="draft",
+        competitors_count=len(data.competitors),
+        tags=data.tags,
+        competitors=data.competitors
+    )
+    db.add(db_thread)
+    db.commit()
+    db.refresh(db_thread)
+    
+    # Return normalized
+    return {
+        "id": tid,
+        "name": db_thread.name,
+        "product": db_thread.product,
+        "status": db_thread.status,
+        "createdAt": db_thread.created_at.strftime("%Y-%m-%d"),
+        "competitorsCount": db_thread.competitors_count
+    }
 
 @app.delete("/api/threads/{tid}")
-def delete_thread(tid: str):
-    if tid in threads_db: del threads_db[tid]
+def delete_thread(tid: str, db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    if not x_user_id: return {"error": "Unauthorized"}
+    db_thread = db.query(models.Thread).filter(models.Thread.id == tid, models.Thread.user_id == x_user_id).first()
+    if db_thread:
+        db.delete(db_thread)
+        db.commit()
     return {"success": True}
 
 @app.post("/api/threads/{tid}/run")
-def run_thread(tid: str, thread_data: Optional[ThreadCreate] = None):
-    # If backend restarted, frontend can re-provide the thread context
-    if tid not in threads_db and thread_data:
+def run_thread(tid: str, thread_data: Optional[ThreadCreate] = None, db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    if not x_user_id: return {"error": "Unauthorized"}
+    
+    db_thread = db.query(models.Thread).filter(models.Thread.id == tid, models.Thread.user_id == x_user_id).first()
+    
+    if not db_thread and thread_data:
         t = thread_data.model_dump()
-        t["id"] = tid
-        t["status"] = "running"
-        t["createdAt"] = datetime.now().strftime("%Y-%m-%d")
-        t["competitorsCount"] = len(t.get("competitors", []))
         t = _normalize_thread(t)
-        threads_db[tid] = t
-    elif tid in threads_db:
-        threads_db[tid]["status"] = "running"
-        threads_db[tid] = _normalize_thread(threads_db[tid])
+        db_thread = models.Thread(
+            id=tid,
+            user_id=x_user_id,
+            name=t["threadName"],
+            product=t["productName"],
+            description=t["description"],
+            status="running",
+            competitors_count=len(t.get("competitors", [])),
+            tags=t.get("tags", []),
+            competitors=t.get("competitors", [])
+        )
+        db.add(db_thread)
+    elif db_thread:
+        db_thread.status = "running"
     else:
         return {"error": "Thread not found"}
 
-    print(f"[backend] run_thread called for ID {tid}")
-    t = threads_db[tid]
-    active_runs_db[tid] = {
-        "id": tid, "name": t["threadName"], "status": "running",
-        "currentUrl": "Initializing...", "progress": 3, "logs": [], "signals": []
+    # Initialize Run record
+    db_run = db.query(models.Run).filter(models.Run.id == tid).first()
+    if db_run:
+        db_run.status = "running"
+        db_run.progress = 3
+        db_run.current_url = "Initializing..."
+        # Clear old logs/signals
+        db.query(models.Log).filter(models.Log.run_id == tid).delete()
+        db.query(models.Signal).filter(models.Signal.run_id == tid).delete()
+    else:
+        db_run = models.Run(id=tid, user_id=x_user_id, status="running", progress=3, current_url="Initializing...")
+        db.add(db_run)
+    
+    db.commit()
+
+    # Pass dict to worker
+    thread_dict = {
+        "id": tid, "threadName": db_thread.name, "productName": db_thread.product,
+        "description": db_thread.description, "tags": db_thread.tags,
+        "competitors": db_thread.competitors, "user_id": x_user_id
     }
-    threading.Thread(target=process_thread, args=(tid, t), daemon=True).start()
+    threading.Thread(target=process_thread, args=(tid, thread_dict), daemon=True).start()
     return {"success": True}
 
 @app.get("/api/runs")
-def get_runs(): return list(active_runs_db.values())
+def get_runs(db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    if not x_user_id: return []
+    runs = db.query(models.Run).filter(models.Run.user_id == x_user_id).all()
+    res = []
+    for r in runs:
+        # Fetch logs and signals
+        logs = db.query(models.Log).filter(models.Log.run_id == r.id).order_by(models.Log.created_at.asc()).all()
+        signals = db.query(models.Signal).filter(models.Signal.run_id == r.id).order_by(models.Signal.created_at.desc()).all()
+        res.append({
+            "id": r.id,
+            "name": r.thread.name if r.thread else "Unknown",
+            "status": r.status,
+            "currentUrl": r.current_url,
+            "progress": r.progress,
+            "logs": [{"id": l.id, "timestamp": l.timestamp, "message": l.message, "type": l.type} for l in logs],
+            "signals": [{"id": s.id, "type": s.type, "title": s.title, "description": s.description, "time": s.time} for s in signals]
+        })
+    return res
 
 @app.get("/api/insights")
-def get_insights(): return list(insights_db.values())
+def get_insights(db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    if not x_user_id: return []
+    insights = db.query(models.Insight).filter(models.Insight.user_id == x_user_id).all()
+    return [i.data for i in insights]
 
 @app.get("/api/insights/{tid}")
-def get_insight(tid: str): return insights_db.get(tid)
+def get_insight(tid: str, db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    insight = db.query(models.Insight).filter(models.Insight.id == tid, models.Insight.user_id == x_user_id).first()
+    return insight.data if insight else None
 
 @app.delete("/api/insights/{tid}")
-def delete_insight(tid: str):
-    if tid in insights_db: del insights_db[tid]
+def delete_insight(tid: str, db: Session = Depends(get_db), x_user_id: str = Header(None)):
+    db.query(models.Insight).filter(models.Insight.id == tid, models.Insight.user_id == x_user_id).delete()
+    db.commit()
     return {"success": True}
 
 

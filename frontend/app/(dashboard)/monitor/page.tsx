@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { supabase } from "@/lib/supabaseClient"
 
 const availableTags = [
   "Pricing", "Features", "Marketing", "Product",
@@ -49,53 +50,20 @@ export default function MonitorDashboard() {
   // Poll — localStorage is source of truth for configs, backend is source for live data
   useEffect(() => {
     const load = async () => {
-      // 1. Load saved configs from localStorage
-      const saved = localStorage.getItem('mirror_monitors')
-      const localMonitors: MonitorSession[] = saved ? JSON.parse(saved) : []
-
       try {
-        // 2. Fetch live data from backend
-        const res = await fetch("http://localhost:8000/api/monitors")
-        const apiMonitors: MonitorSession[] = await res.json()
-        const apiIds = new Set(apiMonitors.map(m => m.id))
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.id) return
 
-        // 3. Re-register any local monitors that backend doesn't know about (server restarted)
-        for (const lm of localMonitors) {
-          if (!apiIds.has(lm.id)) {
-            try {
-              await fetch("http://localhost:8000/api/monitors", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ...lm.config, name: lm.name, id: lm.id })
-              })
-            } catch {}
-          }
-        }
-
-        // 4. Merge: use local configs as base, overlay live backend data
-        // Also include any monitors that exist on backend but not locally
-        const merged = localMonitors.map(lm => {
-          const apiMatch = apiMonitors.find(am => am.id === lm.id)
-          if (apiMatch) {
-            return { ...lm, status: apiMatch.status, runs: apiMatch.runs, insights: apiMatch.insights, lastRunAt: apiMatch.lastRunAt, runCount: apiMatch.runCount }
-          }
-          return lm
+        const res = await fetch("http://localhost:8000/api/monitors", {
+          headers: { 'X-User-ID': session.user.id }
         })
-
-        // Add backend-only monitors (created this session, already in API but not localStorage yet)
-        for (const am of apiMonitors) {
-          if (!localMonitors.find(lm => lm.id === am.id)) {
-            merged.push(am)
-          }
-        }
-
-        setMonitors(merged)
-        localStorage.setItem('mirror_monitors', JSON.stringify(merged))
-      } catch {
-        // Backend down — show local data  
-        setMonitors(localMonitors)
+        const apiMonitors = await res.json()
+        setMonitors(apiMonitors)
+        setIsLoading(false)
+      } catch (err) {
+        console.error(err)
+        setIsLoading(false)
       }
-      setIsLoading(false)
     }
     load()
     const iv = globalThis.setInterval(load, 3000)
@@ -106,18 +74,18 @@ export default function MonitorDashboard() {
     if (!name.trim() || !url.trim()) return
     setIsCreating(true)
     try {
-      const res = await fetch("http://localhost:8000/api/monitors", {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) return
+
+      await fetch("http://localhost:8000/api/monitors", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "X-User-ID": session.user.id
+        },
         body: JSON.stringify({ name, url, tags, trackWhat, intervalSeconds: interval })
       })
-      const newMon = await res.json()
-
-      // Save to localStorage
-      const saved = localStorage.getItem('mirror_monitors')
-      const existing = saved ? JSON.parse(saved) : []
-      localStorage.setItem('mirror_monitors', JSON.stringify([...existing, newMon]))
-
+      
       setShowCreate(false)
       setName(""); setUrl(""); setTags([]); setTrackWhat(""); setIntervalVal(60)
     } catch (e) { console.error(e) }
@@ -125,33 +93,37 @@ export default function MonitorDashboard() {
   }
 
   const handleStart = async (id: string) => {
-    await fetch(`http://localhost:8000/api/monitors/${id}/start`, { method: "POST" }).catch(() => {})
-    // Update status in localStorage
-    const saved = localStorage.getItem('mirror_monitors')
-    if (saved) {
-      const list = JSON.parse(saved)
-      localStorage.setItem('mirror_monitors', JSON.stringify(list.map((m: any) => m.id === id ? { ...m, status: "running" } : m)))
-    }
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) return
+      await fetch(`http://localhost:8000/api/monitors/${id}/start`, { 
+        method: "POST",
+        headers: { 'X-User-ID': session.user.id }
+      })
+    } catch {}
   }
 
   const handleStop = async (id: string) => {
-    await fetch(`http://localhost:8000/api/monitors/${id}/stop`, { method: "POST" }).catch(() => {})
-    const saved = localStorage.getItem('mirror_monitors')
-    if (saved) {
-      const list = JSON.parse(saved)
-      localStorage.setItem('mirror_monitors', JSON.stringify(list.map((m: any) => m.id === id ? { ...m, status: "stopped" } : m)))
-    }
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) return
+      await fetch(`http://localhost:8000/api/monitors/${id}/stop`, { 
+        method: "POST",
+        headers: { 'X-User-ID': session.user.id }
+      })
+    } catch {}
   }
 
   const handleDelete = async (id: string) => {
-    await fetch(`http://localhost:8000/api/monitors/${id}`, { method: "DELETE" }).catch(() => {})
-    setMonitors(prev => prev.filter(m => m.id !== id))
-    // Remove from localStorage
-    const saved = localStorage.getItem('mirror_monitors')
-    if (saved) {
-      const list = JSON.parse(saved)
-      localStorage.setItem('mirror_monitors', JSON.stringify(list.filter((m: any) => m.id !== id)))
-    }
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) return
+      await fetch(`http://localhost:8000/api/monitors/${id}`, { 
+        method: "DELETE",
+        headers: { 'X-User-ID': session.user.id }
+      })
+      setMonitors(prev => prev.filter(m => m.id !== id))
+    } catch {}
   }
 
   const activeCount = monitors.filter(m => m.status === "running").length
@@ -169,7 +141,7 @@ export default function MonitorDashboard() {
   return (
     <div className="min-h-screen bg-background p-8">
       {/* ─── Header ──────────────────────────────────────────────────── */}
-      <div className="mb-8 flex items-start justify-between">
+      <div className="mb-8 flex flex-col sm:flex-row items-start justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="rounded-2xl bg-gradient-to-br from-info/20 to-success/20 p-3.5 border border-info/20">
             <Radar className="h-7 w-7 text-info" />
@@ -191,7 +163,7 @@ export default function MonitorDashboard() {
       </div>
 
       {/* ─── Stats Bar ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="rounded-xl border border-border bg-card p-4 flex items-center gap-3">
           <div className="rounded-lg bg-success/10 p-2">
             <Activity className="h-5 w-5 text-success" />
@@ -228,7 +200,7 @@ export default function MonitorDashboard() {
             <Plus className="h-4 w-4 text-info" />
             <span className="text-sm font-semibold text-foreground">Create New Monitor</span>
           </div>
-          <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Name */}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Session Name</label>
@@ -342,7 +314,7 @@ export default function MonitorDashboard() {
                   hasChanges && "border-warning/30"
                 )}
               >
-                <div className="flex items-center gap-4 p-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4">
                   {/* Status indicator */}
                   <div className={cn(
                     "h-3 w-3 rounded-full shrink-0",
