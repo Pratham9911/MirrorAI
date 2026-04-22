@@ -119,11 +119,11 @@ export function IntegrationsSection() {
           <span className="text-muted-foreground">everything.</span>
         </h2>
 
-        <p className={`mt-8 text-xl text-muted-foreground leading-relaxed max-w-lg mx-auto transition-all duration-1000 delay-100 ${
-          isVisible ? "opacity-100" : "opacity-0"
-        }`}>
-          Your agents connect to 100+ tools and services. They read, write, and act autonomously across your entire stack.
-        </p>
+      <p className={`mt-8 text-xl text-muted-foreground leading-relaxed max-w-lg mx-auto transition-all duration-1000 delay-100 ${
+  isVisible ? "opacity-100" : "opacity-0"
+}`}>
+  Connect your tools like Notion, GitHub, and Slack to understand your product, compare with competitors, and turn insights into action.
+</p>
       </div>
 
       {/* Full-width image */}
@@ -205,7 +205,7 @@ export function IntegrationsSection() {
         </div>
 
         {/* Bottom stats row */}
-        <div className={`flex flex-wrap items-center justify-between gap-8 pt-12 border-t border-foreground/10 transition-all duration-1000 delay-500 pb-32 lg:pb-40 ${
+        {/* <div className={`flex flex-wrap items-center justify-between gap-8 pt-12 border-t border-foreground/10 transition-all duration-1000 delay-500 pb-32 lg:pb-40 ${
           isVisible ? "opacity-100" : "opacity-0"
         }`}>
           <div className="flex flex-wrap gap-12">
@@ -225,7 +225,7 @@ export function IntegrationsSection() {
             View all integrations
             <span className="group-hover:translate-x-1 transition-transform">&rarr;</span>
           </a>
-        </div>
+        </div> */}
       </div>
     </section>
   );

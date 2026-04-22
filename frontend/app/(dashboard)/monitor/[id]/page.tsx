@@ -222,9 +222,19 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
                   <p className="text-sm text-muted-foreground">{insights.summary}</p>
                 </div>
               </div>
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Clock className="h-3 w-3" />{insights.generatedAt}
-              </span>
+              <div className="flex items-center gap-4">
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3 w-3" />{insights.generatedAt}
+                </span>
+                {hasChanges && (
+                  <Link href={`/monitor/${id}/strategy`}>
+                    <Button size="sm" className="gap-1.5 rounded-lg bg-amber-500 text-black hover:bg-amber-600 font-bold border-none h-8">
+                      <Zap className="h-3.5 w-3.5 fill-current" />
+                      View Actions
+                    </Button>
+                  </Link>
+                )}
+              </div>
             </div>
 
             {/* Narrative */}
@@ -350,37 +360,47 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
                       </span>
                     </div>
 
-                    {/* NLP Summary */}
+                    {/* Data Points */}
                     <div className="p-5">
-                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                        Summary
-                      </h4>
-                      {run.summary && typeof run.summary === 'object' && Array.isArray(run.summary.bullets) ? (
-                        <ul className="space-y-2">
-                          {run.summary.bullets.map((bullet: string, i: number) => (
-                            <li key={i} className="flex items-start gap-2 text-sm text-foreground">
-                              <span className="shrink-0 mt-1 h-1.5 w-1.5 rounded-full bg-info/60" />
-                              <span className="leading-relaxed">{bullet}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-                          {run.summary || "No summary available."}
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">
+                          Captured Intelligence
+                        </h4>
+                        <div className="flex gap-2">
+                          <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[9px] font-black uppercase border border-amber-500/20">
+                            {Object.keys((run as any).rival_data || {}).length} Rival Points
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase border border-emerald-500/20">
+                            {Object.keys((run as any).our_data || {}).length} Product Points
+                          </span>
                         </div>
-                      )}
+                      </div>
+                      <p className="text-sm text-zinc-400 leading-relaxed italic border-l-2 border-white/5 pl-3 py-1">
+                        AI-Benchmarked cycle containing technical snapshots of both domains. Expand below to view raw extraction.
+                      </p>
                     </div>
 
                     {/* Expandable raw data */}
                     <details className="group">
-                      <summary className="px-5 py-2.5 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors border-t border-border flex items-center gap-1">
+                      <summary className="px-5 py-2.5 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors border-t border-border flex items-center gap-1 font-bold">
                         <ChevronRight className="h-3 w-3 group-open:rotate-90 transition-transform" />
-                        View Raw Data
+                        Explore Intelligence Snapshots
                       </summary>
-                      <div className="px-5 pb-4">
-                        <pre className="text-xs text-muted-foreground font-mono overflow-auto max-h-48 whitespace-pre-wrap rounded-lg bg-muted/20 p-3 border border-border">
-                          {JSON.stringify(run.data, null, 2).slice(0, 3000)}
-                        </pre>
+                      <div className="px-5 pb-4 space-y-4 pt-2">
+                        <div>
+                          <p className="text-[10px] font-black text-amber-500 uppercase mb-1">Rival Scan</p>
+                          <pre className="text-[10px] text-muted-foreground font-mono overflow-auto max-h-48 whitespace-pre-wrap rounded-lg bg-black/30 p-3 border border-border">
+                            {JSON.stringify((run as any).rival_data || (run as any).data, null, 2)?.slice(0, 3000) || "No data captured"}
+                          </pre>
+                        </div>
+                        {(run as any).our_data && (
+                          <div>
+                            <p className="text-[10px] font-black text-emerald-500 uppercase mb-1">Our Scan</p>
+                            <pre className="text-[10px] text-muted-foreground font-mono overflow-auto max-h-48 whitespace-pre-wrap rounded-lg bg-black/30 p-3 border border-border">
+                              {JSON.stringify((run as any).our_data, null, 2)?.slice(0, 3000) || "No data captured"}
+                            </pre>
+                          </div>
+                        )}
                       </div>
                     </details>
                   </div>
@@ -392,27 +412,25 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
 
         {/* ─── Monitor Config Info ──────────────────────────────────── */}
         <div className="rounded-2xl border border-border bg-card p-5">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Configuration</h3>
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Benchmark Strategy</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <p className="text-xs text-muted-foreground mb-0.5">Target URL</p>
-              <p className="text-sm text-foreground truncate">{monitor.config.url}</p>
+              <p className="text-xs text-muted-foreground mb-0.5">Rival URL</p>
+              <p className="text-sm text-foreground truncate">{monitor.config.rivalUrl || monitor.config.url}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground mb-0.5">Tracking</p>
-              <p className="text-sm text-foreground">{monitor.config.trackWhat || "General"}</p>
+              <p className="text-xs text-muted-foreground mb-0.5">Our URL</p>
+              <p className="text-sm text-foreground truncate">{monitor.config.ourUrl}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground mb-0.5">Interval</p>
+              <p className="text-xs text-muted-foreground mb-0.5">Frequency</p>
               <p className="text-sm text-foreground">
-                {monitor.config.intervalSeconds < 60
-                  ? `${monitor.config.intervalSeconds}s`
-                  : `${monitor.config.intervalSeconds / 60} min`}
+                {monitor.config.intervalSeconds ? `${monitor.config.intervalSeconds / 60} min` : "1 min"}
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground mb-0.5">Created</p>
-              <p className="text-sm text-foreground">{monitor.createdAt}</p>
+              <p className="text-xs text-muted-foreground mb-0.5">Cycle Count</p>
+              <p className="text-sm text-foreground">{monitor.runCount} cycles</p>
             </div>
           </div>
           {monitor.config.tags?.length > 0 && (

@@ -89,8 +89,8 @@ export function HowItWorksSection() {
               isVisible ? "translate-y-0 opacity-100" : "translate-y-16 opacity-0"
             }`}>
               <span className="block">Define.</span>
-              <span className="block text-white/30">Deploy.</span>
-              <span className="block text-white/10">Scale.</span>
+              <span className="block text-white/30">Track.</span>
+              <span className="block text-white/10">Act.</span>
             </h2>
           </div>
 

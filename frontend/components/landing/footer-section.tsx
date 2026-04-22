@@ -30,9 +30,9 @@ const footerLinks = {
 };
 
 const socialLinks = [
-  { name: "Twitter", href: "#" },
-  { name: "GitHub", href: "#" },
-  { name: "LinkedIn", href: "#" },
+  { name: "X  ", href: "https://x.com/PRATHAM83014105" },
+  { name: "GitHub", href: "https://github.com/Pratham9911/MirrorAI" },
+  { name: "LinkedIn", href: "https://www.linkedin.com/in/pratham-tiwari-29a82b315/" },
 ];
 
 function AnimatedWaveCanvas() {
@@ -129,6 +129,8 @@ export function FooterSection() {
                   <a
                     key={link.name}
                     href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-sm text-white/40 hover:text-white transition-colors flex items-center gap-1 group"
                   >
                     {link.name}
@@ -139,7 +141,7 @@ export function FooterSection() {
             </div>
 
             {/* Link Columns */}
-            {Object.entries(footerLinks).map(([title, links]) => (
+            {/* {Object.entries(footerLinks).map(([title, links]) => (
               <div key={title}>
                 <h3 className="text-sm font-medium text-white mb-6">{title}</h3>
                 <ul className="space-y-4">
@@ -160,20 +162,20 @@ export function FooterSection() {
                   ))}
                 </ul>
               </div>
-            ))}
+            ))} */}
           </div>
         </div>
 
         {/* Bottom Bar */}
         <div className="py-8 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-white/30">
-            &copy; 2025 MirrorAI. All rights reserved.
+            &copy; 2026 MirrorAI. All rights reserved.
           </p>
 
           <div className="flex items-center gap-4 text-sm text-white/30">
             <span className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#eca8d6]" />
-              All agents operational
+              <span className="w-2 h-2 rounded-full bg-[#21e548]" />
+              PRATHAM TIWARI 
             </span>
           </div>
         </div>

@@ -2,7 +2,45 @@
 
 import { useEffect, useState, useRef } from "react";
 
-const words = ["automate", "delegate", "execute", "scale"];
+//small sentences pls
+const words = [
+  "track",
+  "compare",
+  "spot gaps",
+  "analyze",
+  "adapt",
+  "keeps you ahead",
+  "gives you the edge",
+  "empowers your strategy",
+  "unleashes your potential",
+  "dominates the market",
+  "leaves competitors behind",
+  "drives your success",
+  "redefines the game",
+  "decide",
+  "outsmart",
+  "act",
+  "execute",
+  "is your unfair advantage",
+  "outperforms the rest",
+  "is the competitive advantage",
+  
+
+
+];
+
+function buildShuffledIndices(excludeIndex?: number) {
+  const indices = words
+    .map((_, index) => index)
+    .filter((index) => index !== excludeIndex);
+
+  for (let i = indices.length - 1; i > 0; i -= 1) {
+    const randomIndex = Math.floor(Math.random() * (i + 1));
+    [indices[i], indices[randomIndex]] = [indices[randomIndex], indices[i]];
+  }
+
+  return indices;
+}
 
 function BlurWord({ word, trigger }: { word: string; trigger: number }) {
   const letters = word.split("");
@@ -58,7 +96,7 @@ function BlurWord({ word, trigger }: { word: string; trigger: number }) {
       framesRef.current.forEach(cancelAnimationFrame);
       timersRef.current.forEach(clearTimeout);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trigger]);
 
   // gradient colours cycling across letter positions
@@ -96,7 +134,7 @@ function BlurWord({ word, trigger }: { word: string; trigger: number }) {
               transition: "color 0.4s ease",
             }}
           >
-            {char}
+            {char === " " ? "\u00A0" : char}
           </span>
         );
       })}
@@ -107,15 +145,34 @@ function BlurWord({ word, trigger }: { word: string; trigger: number }) {
 export function HeroSection() {
   const [isVisible, setIsVisible] = useState(false);
   const [wordIndex, setWordIndex] = useState(0);
+  const remainingWordIndicesRef = useRef<number[]>([]);
 
   useEffect(() => {
     setIsVisible(true);
   }, []);
 
   useEffect(() => {
+    if (words.length <= 1) {
+      setWordIndex(0);
+      return;
+    }
+
+    const firstRotation = buildShuffledIndices();
+    const firstWord = firstRotation.shift() ?? 0;
+
+    setWordIndex(firstWord);
+    remainingWordIndicesRef.current = firstRotation;
+
     const interval = setInterval(() => {
-      setWordIndex((prev) => (prev + 1) % words.length);
+      setWordIndex((currentWordIndex) => {
+        if (remainingWordIndicesRef.current.length === 0) {
+          remainingWordIndicesRef.current = buildShuffledIndices(currentWordIndex);
+        }
+
+        return remainingWordIndicesRef.current.shift() ?? currentWordIndex;
+      });
     }, 2500);
+
     return () => clearInterval(interval);
   }, []);
 
@@ -163,51 +220,50 @@ export function HeroSection() {
           />
         ))}
       </div>
-      
+
       <div className="relative z-10 w-full max-w-[1400px] mx-auto px-6 lg:px-12 py-32 lg:py-40">
         <div className="lg:max-w-[55%]">
-        {/* Eyebrow */}
-        <div 
-          className={`mb-8 transition-all duration-700 ${
-            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-          }`}
-        >
-          <span className="inline-flex items-center gap-3 text-sm font-mono text-white/60">
-            <span className="w-8 h-px bg-white/30" />
-            Autonomous AI agents for distributed computing
-          </span>
-        </div>
-        
-        {/* Main headline */}
-        <div className="mb-12">
-          <h1 
-            className={`text-left text-[clamp(2rem,6vw,7rem)] font-display leading-[0.92] tracking-tight text-white transition-all duration-1000 ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-            }`}
+          {/* Eyebrow */}
+          <div
+            className={`mb-8 transition-all duration-700 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+              }`}
           >
-            <span className="block sm:whitespace-nowrap">Distributed compute,</span>
-            <span className="block sm:whitespace-nowrap">
-              agents that{" "}
-              <span className="relative inline-block">
-                <BlurWord word={words[wordIndex]} trigger={wordIndex} />
-              </span>
+            <span className="inline-flex items-center gap-3 text-sm font-mono text-white/60">
+              <span className="w-8 h-px bg-white/30" />
+           AI agents that monitor competitors and tell you what to do next
             </span>
-          </h1>
-        </div>
+          </div>
+
+          {/* Main headline */}
+          <div className="mb-12">
+            <h1
+              className={`text-left text-[clamp(2rem,5vw,4rem)] font-display leading-[0.92] tracking-tight text-white transition-all duration-1000 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+                }`}
+            >
+              <span className="block sm:whitespace-nowrap">
+                Stay ahead of your rivals,
+              </span>
+              <span className="bl ock sm:whitespace-nowrap">
+                Agent that{" "}
+                <span className="relative inline-block">
+                  <BlurWord word={words[wordIndex]} trigger={wordIndex} />
+                </span>
+              </span>
+            </h1>
+          </div>
         </div>
       </div>
-      
+
       {/* Stats — 3 metrics static, no auto-scroll */}
-      <div 
-        className={`absolute bottom-12 left-0 right-0 px-6 lg:px-12 transition-all duration-700 delay-500 ${
-          isVisible ? "opacity-100" : "opacity-0"
-        }`}
+      <div
+        className={`absolute bottom-12 left-0 right-0 px-6 lg:px-12 transition-all duration-700 delay-500 ${isVisible ? "opacity-100" : "opacity-0"
+          }`}
       >
         <div className="max-w-[1400px] mx-auto flex flex-wrap sm:flex-nowrap items-start gap-6 sm:gap-10 lg:gap-20">
           {[
-            { value: "3500+", label: "autonomous agents active" },
-            { value: "99.7%", label: "distributed uptime" },
-            { value: "<50ms", label: "execution latency" },
+            { value: "2 scans", label: "to detect meaningful changes" },
+            { value: "<90 sec", label: "to generate actionable insights" },
+            { value: "50+", label: "competitors tracked" },
           ].map((stat) => (
             <div key={stat.label} className="flex flex-col gap-2">
               <span className="text-3xl lg:text-4xl font-display text-white">{stat.value}</span>
@@ -218,6 +274,7 @@ export function HeroSection() {
           ))}
         </div>
       </div>
+
 
       {/* Scroll indicator */}
 

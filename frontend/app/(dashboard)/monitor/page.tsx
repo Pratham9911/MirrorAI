@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   Radar, Globe, Play, Square, Trash2, Clock, Plus,
   Activity, Loader2, AlertTriangle, CheckCircle2,
-  Search, Tag, MoreHorizontal, Zap, Eye
+  Search, Tag, MoreHorizontal, Zap, Eye, Target
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -42,8 +42,11 @@ export default function MonitorDashboard() {
   // Create form
   const [name, setName] = useState("")
   const [url, setUrl] = useState("")
+  const [ourUrl, setOurUrl] = useState("")
+  const [ourTask, setOurTask] = useState("")
   const [tags, setTags] = useState<string[]>([])
   const [trackWhat, setTrackWhat] = useState("")
+  const [myContext, setMyContext] = useState("")
   const [interval, setIntervalVal] = useState(60)
   const [isCreating, setIsCreating] = useState(false)
 
@@ -83,11 +86,14 @@ export default function MonitorDashboard() {
           "Content-Type": "application/json",
           "X-User-ID": session.user.id
         },
-        body: JSON.stringify({ name, url, tags, trackWhat, intervalSeconds: interval })
+        body: JSON.stringify({ 
+          name, url: url, 
+          config: { rivalUrl: url, ourUrl, rivalTask: trackWhat, ourTask, tags, intervalSeconds: interval }
+        })
       })
       
       setShowCreate(false)
-      setName(""); setUrl(""); setTags([]); setTrackWhat(""); setIntervalVal(60)
+      setName(""); setUrl(""); setOurUrl(""); setOurTask(""); setTags([]); setTrackWhat(""); setMyContext(""); setIntervalVal(60)
     } catch (e) { console.error(e) }
     setIsCreating(false)
   }
@@ -201,71 +207,95 @@ export default function MonitorDashboard() {
             <span className="text-sm font-semibold text-foreground">Create New Monitor</span>
           </div>
           <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Name */}
-            <div>
+            {/* Session Name (Common) */}
+            <div className="lg:col-span-2">
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Session Name</label>
               <input
                 value={name} onChange={e => setName(e.target.value)}
-                placeholder="e.g. Stripe Pricing Watch"
-                className="h-10 w-full rounded-lg border border-border bg-muted/30 px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-muted-foreground focus:outline-none transition-all"
+                placeholder="e.g. Mirror vs Reflex Competitive Pulse"
+                className="h-10 w-full rounded-lg border border-border bg-muted/30 px-3 text-sm text-foreground focus:border-muted-foreground focus:outline-none transition-all"
               />
             </div>
-            {/* URL */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Website URL</label>
-              <input
-                value={url} onChange={e => setUrl(e.target.value)}
-                placeholder="https://example.com/pricing"
-                className="h-10 w-full rounded-lg border border-border bg-muted/30 px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-muted-foreground focus:outline-none transition-all"
-              />
-            </div>
-            {/* Tags */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1.5">
-                <Tag className="h-3 w-3" />Focus Tags
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {availableTags.map(tag => (
-                  <button
-                    key={tag} type="button"
-                    onClick={() => setTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])}
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-xs font-medium transition-all",
-                      tags.includes(tag)
-                        ? "bg-foreground text-background"
-                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                    )}
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* Track What + Interval */}
-            <div className="space-y-3">
+
+            {/* Rival Config */}
+            <div className="space-y-4 border-r border-border/50 pr-4">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-amber-500">Target Rival</h4>
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1.5">
-                  <Search className="h-3 w-3" />What to Track
-                </label>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Rival Website URL</label>
                 <input
-                  value={trackWhat} onChange={e => setTrackWhat(e.target.value)}
-                  placeholder="pricing, hero section, feature list"
-                  className="h-10 w-full rounded-lg border border-border bg-muted/30 px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-muted-foreground focus:outline-none transition-all"
+                  value={url} onChange={e => setUrl(e.target.value)}
+                  placeholder="https://competitor.com"
+                  className="h-10 w-full rounded-lg border border-border bg-muted/30 px-3 text-sm text-foreground focus:border-amber-500/50 outline-none transition-all"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1.5">
-                  <Clock className="h-3 w-3" />Interval
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Specific Tracking for Rival</label>
+                <textarea
+                  value={trackWhat} onChange={e => setTrackWhat(e.target.value)}
+                  placeholder="New feature releases, pricing tier updates"
+                  className="w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-foreground focus:border-amber-500/50 outline-none transition-all h-20 resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Our Config */}
+            <div className="space-y-4">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Our Product</h4>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Our Website URL</label>
+                <input
+                  value={ourUrl} onChange={e => setOurUrl(e.target.value)}
+                  placeholder="https://myproduct.com"
+                  className="h-10 w-full rounded-lg border border-border bg-muted/30 px-3 text-sm text-foreground focus:border-emerald-500/50 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Specific Tracking for Us</label>
+                <textarea
+                  value={ourTask} onChange={e => setOurTask(e.target.value)}
+                  placeholder="Our core features we want to benchmark"
+                  className="w-full rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-foreground focus:border-emerald-500/50 outline-none transition-all h-20 resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Tags & Meta */}
+            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-border mt-2">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                  <Tag className="h-3 w-3" />Market Category Tags
                 </label>
-                <select
-                  value={interval} onChange={e => setIntervalVal(Number(e.target.value))}
-                  className="h-10 w-full rounded-lg border border-border bg-muted/30 px-3 text-sm text-foreground focus:border-muted-foreground focus:outline-none transition-all appearance-none cursor-pointer"
-                >
-                  <option value={60} className="bg-background">Every 1 minute</option>
-                  <option value={300} className="bg-background">Every 5 minutes</option>
-                  <option value={600} className="bg-background">Every 10 minutes</option>
-                  <option value={1800} className="bg-background">Every 30 minutes</option>
-                </select>
+                <div className="flex flex-wrap gap-1.5">
+                  {availableTags.map(tag => (
+                    <button
+                      key={tag} type="button"
+                      onClick={() => setTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])}
+                      className={cn(
+                        "rounded-md px-2.5 py-1 text-xs font-medium transition-all font-bold",
+                        tags.includes(tag) ? "bg-amber-500 text-black shadow-lg shadow-amber-500/20" : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      )}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1.5">
+                      <Clock className="h-3 w-3" />Scan Frequency
+                    </label>
+                    <select
+                      value={interval} onChange={e => setIntervalVal(Number(e.target.value))}
+                      className="h-10 w-full rounded-lg border border-border bg-muted/30 px-3 text-sm text-foreground focus:border-muted-foreground focus:outline-none transition-all appearance-none cursor-pointer"
+                    >
+                      <option value={60} className="bg-background">Every 1 minute</option>
+                      <option value={300} className="bg-background">Every 5 minutes</option>
+                      <option value={3600} className="bg-background">Every 60 minutes</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -346,12 +376,16 @@ export default function MonitorDashboard() {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1 truncate">
-                        <Globe className="h-3 w-3 shrink-0" />{mon.config.url}
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                      <span className="flex items-center gap-1 truncate max-w-[150px]">
+                        <Globe className="h-3 w-3 shrink-0 text-amber-500/70" />{mon.config.rivalUrl || mon.url}
+                      </span>
+                      <span className="shrink-0 text-zinc-800">vs</span>
+                      <span className="flex items-center gap-1 truncate max-w-[150px]">
+                        <Target className="h-3 w-3 shrink-0 text-emerald-500/70" />{mon.config.ourUrl}
                       </span>
                       <span className="shrink-0">·</span>
-                      <span className="shrink-0">{mon.runCount} scans</span>
+                      <span className="shrink-0 font-bold text-zinc-400">{mon.run_count} cycles</span>
                       {mon.lastRunAt && (
                         <>
                           <span className="shrink-0">·</span>
@@ -387,6 +421,14 @@ export default function MonitorDashboard() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {hasChanges && (
+                      <Link href={`/monitor/${mon.id}/strategy`}>
+                        <Button variant="ghost" size="sm" className="gap-1 rounded-lg text-xs bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 h-8 border border-amber-500/20">
+                          <Zap className="h-3.5 w-3.5" />
+                          View Actions
+                        </Button>
+                      </Link>
+                    )}
                     <Link href={`/monitor/${mon.id}`}>
                       <Button variant="ghost" size="sm" className="gap-1 rounded-lg text-xs hover:bg-muted h-8">
                         <Eye className="h-3.5 w-3.5" />

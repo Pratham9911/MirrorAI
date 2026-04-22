@@ -3,21 +3,21 @@
 import { useState, useEffect, useRef } from "react";
 
 const features = [
-  { 
-    title: "TypeScript native", 
-    description: "Full type safety for agent configs and responses."
+  {
+    title: "Multi-Agent Intelligence",
+    description: "Specialized agents monitor, analyze, and generate insights together."
   },
-  { 
-    title: "Streaming results", 
-    description: "Watch your agents think and act in real-time."
+  {
+    title: "Live Streaming Preview",
+    description: "Watch your agents detect changes and generate insights in real-time."
   },
-  { 
-    title: "Multi-model support", 
-    description: "OpenAI, Anthropic, Mistral, or bring your own."
+  {
+    title: "Workflow Automation",
+    description: "Automate monitoring, analysis, and reporting with custom workflows."
   },
-  { 
-    title: "Local debugging", 
-    description: "Test agents locally before deploying to cloud."
+  {
+    title: "Seamless Integrations",
+    description: "Send insights directly to email, Notion, or your existing tools."
   },
 ];
 
@@ -42,9 +42,8 @@ export function DevelopersSection() {
 
       {/* Image — absolute, bottom-right, behind all content */}
       <div
-        className={`absolute bottom-0 right-0 w-[55%] h-[85%] pointer-events-none transition-all duration-1000 delay-300 ${
-          isVisible ? "opacity-100" : "opacity-0"
-        }`}
+        className={`absolute bottom-0 right-0 w-[55%] h-[85%] pointer-events-none transition-all duration-1000 delay-300 ${isVisible ? "opacity-100" : "opacity-0"
+          }`}
       >
         <img
           src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Upscaled%20Image%20%2813%29-OQ2DiR3ElVsUg8kTvTL1kC5A3Q6maM.png"
@@ -62,38 +61,35 @@ export function DevelopersSection() {
       <div className="relative z-10 max-w-[1400px] mx-auto px-6 lg:px-12">
         {/* Header — Full width */}
         <div
-          className={`mb-16 transition-all duration-700 ${
-            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-          }`}
+          className={`mb-16 transition-all duration-700 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+            }`}
         >
           <span className="inline-flex items-center gap-3 text-sm font-mono text-muted-foreground mb-6">
             <span className="w-8 h-px bg-foreground/30" />
-            Developer SDK
+            Insight Engine
           </span>
           <h2 className="text-5xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9]">
-            Code your agents.
+            Cook your agents.
             <br />
-            <span className="text-muted-foreground">Or let them code.</span>
+            <span className="text-muted-foreground">Or let them cook.</span>
           </h2>
         </div>
 
         {/* Description + Features — left half only */}
         <div
-          className={`w-full lg:max-w-[50%] transition-all duration-700 delay-100 ${
-            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-          }`}
+          className={`w-full lg:max-w-[50%] transition-all duration-700 delay-100 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+            }`}
         >
           <p className="text-xl text-muted-foreground mb-12 leading-relaxed max-w-md">
-            A powerful SDK for building, deploying, and orchestrating AI agents. 
-            Define behaviors in code or natural language.
+            An intelligent system of AI agents that monitors competitors, analyzes changes, and delivers actionable insights.
+            Set your goals — let the agents do the work.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {features.map((feature, index) => (
               <div
                 key={feature.title}
-                className={`transition-all duration-500 ${
-                  isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-                }`}
+                className={`transition-all duration-500 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+                  }`}
                 style={{ transitionDelay: `${index * 50 + 200}ms` }}
               >
                 <h3 className="font-medium mb-1">{feature.title}</h3>

@@ -5,27 +5,31 @@ import { useEffect, useRef, useState } from "react";
 const features = [
   {
     number: "01",
-    title: "Autonomous Execution",
-    description: "Deploy AI agents that work independently. They analyze, decide, and execute complex multi-step tasks without human intervention.",
-    stats: { value: "99.7%", label: "task completion" },
+    title: "Competitor Monitoring",
+    description:
+      "Continuously track your competitors across sources. Detect meaningful changes in features, pricing, and strategy automatically.",
+    stats: { value: "2 scans", label: "to detect changes" },
   },
   {
     number: "02",
-    title: "Distributed Computing",
-    description: "Offload compute-heavy tasks to our global network. Your agents run on optimized infrastructure across 50+ regions worldwide.",
-    stats: { value: "50+", label: "global regions" },
+    title: "Actionable Insights",
+    description:
+      "Go beyond updates. Understand what competitor changes mean for you and get clear, practical actions to take next.",
+    stats: { value: "<90 sec", label: "to generate insights" },
   },
   {
     number: "03",
-    title: "Multi-Agent Orchestration",
-    description: "Coordinate teams of specialized agents. They communicate, delegate, and collaborate to solve complex problems together.",
-    stats: { value: "1000x", label: "parallel execution" },
+    title: "Smart Comparison",
+    description:
+      "Compare competitor features with your product. Know what you already have, what you're missing, and what actually matters.",
+    stats: { value: "Real-time", label: "feature comparison" },
   },
   {
     number: "04",
-    title: "Secure Sandboxing",
-    description: "Each agent runs in isolated environments. Full audit trails, encrypted execution, and zero data leakage between tasks.",
-    stats: { value: "0", label: "data breaches" },
+    title: "Execution System",
+    description:
+      "Turn insights into tasks. Schedule actions, track progress, and stay ahead without manual planning.",
+    stats: { value: "3 actions", label: "per update" },
   },
 ];
 
@@ -132,6 +136,7 @@ export function FeaturesSection() {
   const [isVisible, setIsVisible] = useState(false);
   const [activeFeature, setActiveFeature] = useState(0);
   const sectionRef = useRef<HTMLDivElement>(null);
+  const currentFeature = features[activeFeature] ?? features[0];
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -143,6 +148,14 @@ export function FeaturesSection() {
 
     if (sectionRef.current) observer.observe(sectionRef.current);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveFeature((prev) => (prev + 1) % features.length);
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -161,9 +174,8 @@ export function FeaturesSection() {
                 Capabilities
               </span>
               <h2
-                className={`text-5xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9] transition-all duration-1000 ${
-                  isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-                }`}
+                className={`text-5xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9] transition-all duration-1000 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+                  }`}
               >
                 Intelligent
                 <br />
@@ -171,11 +183,9 @@ export function FeaturesSection() {
               </h2>
             </div>
             <div className="lg:col-span-5 lg:pb-4">
-              <p className={`text-xl text-muted-foreground leading-relaxed transition-all duration-1000 delay-200 ${
-                isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-              }`}>
-                Deploy autonomous AI agents that execute complex tasks across distributed infrastructure. No supervision required.
-              </p>
+              <p className={`text-xl text-muted-foreground leading-relaxed transition-all duration-1000 delay-200 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+                }`}>
+                Track competitors, understand what changed, and know exactly what to do next — all in one place.              </p>
             </div>
           </div>
         </div>
@@ -183,26 +193,24 @@ export function FeaturesSection() {
         {/* Bento Grid Layout */}
         <div className="grid lg:grid-cols-12 gap-4 lg:gap-6">
           {/* Large feature card */}
-          <div 
-            className={`lg:col-span-12 relative bg-black border border-foreground/10 min-h-[500px] overflow-hidden group transition-all duration-700 flex ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-            }`}
-            onMouseEnter={() => setActiveFeature(0)}
+          <div
+            className={`lg:col-span-12 relative bg-black border border-foreground/10 min-h-[500px] overflow-hidden group transition-all duration-700 flex ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+              }`}
           >
             {/* Left: text content */}
             <div className="relative flex-1 p-8 lg:p-12 bg-black">
               <ParticleVisualization />
               <div className="relative z-10">
-                <span className="font-mono text-sm text-muted-foreground">{features[0].number}</span>
+                <span className="font-mono text-sm text-muted-foreground">{currentFeature.number}</span>
                 <h3 className="text-3xl lg:text-4xl font-display mt-4 mb-6 group-hover:translate-x-2 transition-transform duration-500">
-                  {features[0].title}
+                  {currentFeature.title}
                 </h3>
                 <p className="text-lg text-muted-foreground leading-relaxed max-w-md mb-8">
-                  {features[0].description}
+                  {currentFeature.description}
                 </p>
                 <div>
-                  <span className="text-5xl lg:text-6xl font-display">{features[0].stats.value}</span>
-                  <span className="block text-sm text-muted-foreground font-mono mt-2">{features[0].stats.label}</span>
+                  <span className="text-5xl lg:text-6xl font-display">{currentFeature.stats.value}</span>
+                  <span className="block text-sm text-muted-foreground font-mono mt-2">{currentFeature.stats.label}</span>
                 </div>
               </div>
             </div>
