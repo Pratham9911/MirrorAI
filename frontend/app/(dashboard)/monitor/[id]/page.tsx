@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabaseClient"
+import { BACKEND_URL } from "@/lib/config"
 
 interface ChangeItem {
   type: string
@@ -76,7 +77,7 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user?.id) return
 
-        const res = await fetch(`http://localhost:8000/api/monitors/${id}`, {
+        const res = await fetch(`${BACKEND_URL}/api/monitors/${id}`, {
           headers: { 'X-User-ID': session.user.id }
         })
         const d = await res.json()
@@ -98,7 +99,7 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
-      await fetch(`http://localhost:8000/api/monitors/${id}/start`, { 
+      await fetch(`${BACKEND_URL}/api/monitors/${id}/start`, { 
         method: "POST",
         headers: { 'X-User-ID': session.user.id }
       })
@@ -108,7 +109,7 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
-      await fetch(`http://localhost:8000/api/monitors/${id}/stop`, { 
+      await fetch(`${BACKEND_URL}/api/monitors/${id}/stop`, { 
         method: "POST",
         headers: { 'X-User-ID': session.user.id }
       })

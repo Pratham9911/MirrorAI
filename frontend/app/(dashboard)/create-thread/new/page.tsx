@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { supabase } from "@/lib/supabaseClient"
+import { BACKEND_URL } from "@/lib/config"
 
 interface Competitor {
   id: string
@@ -81,7 +82,7 @@ export default function NewThreadPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
 
-      await fetch('http://localhost:8000/api/threads', {
+      await fetch(`${BACKEND_URL}/api/threads`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

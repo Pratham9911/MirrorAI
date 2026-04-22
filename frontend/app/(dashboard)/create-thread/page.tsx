@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { supabase } from "@/lib/supabaseClient"
+import { BACKEND_URL } from "@/lib/config"
 
 interface Thread {
   id: string
@@ -109,7 +110,7 @@ export default function CreateThreadPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user?.id) return
 
-        const resp = await fetch('http://localhost:8000/api/threads', {
+        const resp = await fetch(`${BACKEND_URL}/api/threads`, {
           headers: { 'X-User-ID': session.user.id }
         })
         const apiThreads = await resp.json()
@@ -143,7 +144,7 @@ export default function CreateThreadPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
 
-      await fetch(`http://localhost:8000/api/threads/${id}`, { 
+      await fetch(`${BACKEND_URL}/api/threads/${id}`, { 
         method: 'DELETE',
         headers: { 'X-User-ID': session.user.id }
       })
@@ -156,7 +157,7 @@ export default function CreateThreadPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
 
-      await fetch(`http://localhost:8000/api/threads/${id}/run`, { 
+      await fetch(`${BACKEND_URL}/api/threads/${id}/run`, { 
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

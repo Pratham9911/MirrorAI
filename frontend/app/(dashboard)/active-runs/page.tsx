@@ -19,6 +19,7 @@ import {
 import { SkeletonBrowser, SkeletonSignal, SkeletonTerminal, Skeleton } from "@/components/skeleton-loader"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabaseClient"
+import { BACKEND_URL } from "@/lib/config"
 
 interface ActiveThread {
   id: string
@@ -89,7 +90,7 @@ export default function ActiveRunsPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user?.id) return
 
-        const res = await fetch('http://localhost:8000/api/runs', {
+        const res = await fetch(`${BACKEND_URL}/api/runs`, {
           headers: { 'X-User-ID': session.user.id }
         })
         const data = await res.json()

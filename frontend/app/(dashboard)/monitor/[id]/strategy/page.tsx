@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabaseClient"
+import { BACKEND_URL } from "@/lib/config"
 
 interface Task {
   id: string
@@ -57,7 +58,7 @@ export default function StrategyPage({ params }: { params: Promise<{ id: string 
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user?.id) return
 
-        const res = await fetch(`http://localhost:8000/api/monitors/${id}`, {
+        const res = await fetch(`${BACKEND_URL}/api/monitors/${id}`, {
           headers: { 'X-User-ID': session.user.id }
         })
         const d = await res.json()
@@ -96,7 +97,7 @@ export default function StrategyPage({ params }: { params: Promise<{ id: string 
     const date = dateInput?.value || new Date().toISOString().split('T')[0]
 
     try {
-      const res = await fetch("http://localhost:8000/api/monitors/actions", {
+      const res = await fetch(`${BACKEND_URL}/api/monitors/actions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { Skeleton, SkeletonInsightCard } from "@/components/skeleton-loader"
 import { supabase } from "@/lib/supabaseClient"
+import { BACKEND_URL } from "@/lib/config"
 
 interface CompletedThread {
   id: string
@@ -50,7 +51,7 @@ export default function InsightsPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user?.id) return
 
-        const res = await fetch('http://localhost:8000/api/insights', {
+        const res = await fetch(`${BACKEND_URL}/api/insights`, {
           headers: { 'X-User-ID': session.user.id }
         })
         const apiInsights = await res.json()
@@ -75,7 +76,7 @@ export default function InsightsPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
 
-      await fetch(`http://localhost:8000/api/insights/${id}`, { 
+      await fetch(`${BACKEND_URL}/api/insights/${id}`, { 
         method: "DELETE",
         headers: { 'X-User-ID': session.user.id }
       })

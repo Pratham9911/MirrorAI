@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabaseClient"
+import { BACKEND_URL } from "@/lib/config"
 
 const availableTags = [
   "Pricing", "Features", "Marketing", "Product",
@@ -57,7 +58,7 @@ export default function MonitorDashboard() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user?.id) return
 
-        const res = await fetch("http://localhost:8000/api/monitors", {
+        const res = await fetch(`${BACKEND_URL}/api/monitors`, {
           headers: { 'X-User-ID': session.user.id }
         })
         const apiMonitors = await res.json()
@@ -80,7 +81,7 @@ export default function MonitorDashboard() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
 
-      await fetch("http://localhost:8000/api/monitors", {
+      await fetch(`${BACKEND_URL}/api/monitors`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -102,7 +103,7 @@ export default function MonitorDashboard() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
-      await fetch(`http://localhost:8000/api/monitors/${id}/start`, { 
+      await fetch(`${BACKEND_URL}/api/monitors/${id}/start`, { 
         method: "POST",
         headers: { 'X-User-ID': session.user.id }
       })
@@ -113,7 +114,7 @@ export default function MonitorDashboard() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
-      await fetch(`http://localhost:8000/api/monitors/${id}/stop`, { 
+      await fetch(`${BACKEND_URL}/api/monitors/${id}/stop`, { 
         method: "POST",
         headers: { 'X-User-ID': session.user.id }
       })
@@ -124,7 +125,7 @@ export default function MonitorDashboard() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
-      await fetch(`http://localhost:8000/api/monitors/${id}`, { 
+      await fetch(`${BACKEND_URL}/api/monitors/${id}`, { 
         method: "DELETE",
         headers: { 'X-User-ID': session.user.id }
       })

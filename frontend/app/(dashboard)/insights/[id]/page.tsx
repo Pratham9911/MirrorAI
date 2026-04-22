@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton, SkeletonCard } from "@/components/skeleton-loader"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabaseClient"
+import { BACKEND_URL } from "@/lib/config"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Recommendation {
@@ -253,7 +254,7 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user?.id) return
 
-        const res = await fetch(`http://localhost:8000/api/insights/${id}`, {
+        const res = await fetch(`${BACKEND_URL}/api/insights/${id}`, {
           headers: { 'X-User-ID': session.user.id }
         })
         if (res.ok) {

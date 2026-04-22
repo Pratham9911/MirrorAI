@@ -39,11 +39,52 @@ class MonitorCreate(BaseModel):
     id: Optional[str] = None
     name: str
     url: str
-    tags: List[str] = []
-    trackWhat: str = ""
-    intervalSeconds: int = 60
+    config: dict = {} # contains {rivalUrl, ourUrl, rivalTask, ourTask, tags, intervalSeconds}
     model_config = {"extra": "allow"}
 
+class StrategicActionCreate(BaseModel):
+    monitor_id: str
+    title: str
+    description: str
+    scheduled_date: str
+    tasks: List[dict]
+
+
+def _send_mock_email(monitor_name: str, url: str, change_summary: str, actions: list, opportunities: list):
+    """Mocks sending an email notification."""
+    recipient = "prathamtiwari0123@gmail.com"
+    subject = f"MirrorAI: Competitor Update Detected 🚨 [{monitor_name}]"
+    
+    actions_list = "\n".join([f"- {a.get('title')}" for a in actions[:3]])
+    opps_list = "\n".join([f"- {o}" for o in opportunities[:2]])
+    
+    body = f"""
+MirrorAI | Strategic Intelligence Unit
+--------------------------------------
+Alert: High-Impact Competitor Shift Detected
+
+Monitor: {monitor_name}
+Target Domain: {url}
+
+SUMMARY OF CHANGE:
+{change_summary}
+
+PROPOSED STRATEGIC INTERVENTIONS:
+{actions_list}
+
+MARKET OPPORTUNITIES:
+{opps_list}
+
+View the full execution protocol and activate these actions here:
+http://localhost:3000/monitor/
+
+Regards,
+MirrorAI Intelligence Engine
+--------------------------------------
+"""
+    print(f"\n[INTELLIGENCE UNIT] Dispatching report to: {recipient}")
+    print(body)
+    print("[INTELLIGENCE UNIT] Security dispatch complete.\n")
 
 def _summarize_run_data(raw_data: dict, url: str, tags: str) -> dict:
     """Use Groq to turn raw agent JSON into structured bullet points."""
@@ -80,51 +121,70 @@ Keep it to 3-5 high-impact points. Be specific with numbers and names. Return ON
         print(f"[monitor] summary error: {e}")
         return {"bullets": ["Summary generation failed."]}
 
-def _generate_diff_insights(old_run: dict, new_run: dict, url: str) -> dict:
-    """Compare two runs and return NLP change insights."""
+def _generate_diff_insights(old_run: dict, new_run: dict, rival_url: str, our_url: str, idea_context: dict) -> dict:
+    """Compare rival change + benchmark against our site."""
     if not groq_client:
         return {"changes_detected": False, "summary": "LLM not available.", "change_items": [], "narrative": ""}
+    
+    our_product = idea_context.get('name', 'Our Product')
+    our_current_state = new_run.get('our_data', {})
+    rival_prev = old_run.get('rival_data', {})
+    rival_curr = new_run.get('rival_data', {})
+
     try:
-        prompt = f"""You are a website change detective for {url}.
+        prompt = f"""You are Mirror — a high-velocity strategic benchmark engine for {our_product}.
 
-PREVIOUS SCAN ({old_run['timestamp']}):
-{old_run.get('summary', '')}
+OBJECTIVE:
+Compare the RIVAL'S evolution ({rival_url}) and benchmark it against OUR live state ({our_url}).
 
----RAW DATA---
-{json.dumps(old_run.get('data', {}), indent=2)[:3000]}
+--- DATA INPUTS ---
+RIVAL PREVIOUS: {json.dumps(rival_prev, indent=2)[:1000]}
+RIVAL CURRENT: {json.dumps(rival_curr, indent=2)[:1000]}
+OUR CURRENT STATE ({our_url}): {json.dumps(our_current_state, indent=2)[:1000]}
 
-CURRENT SCAN ({new_run['timestamp']}):
-{new_run.get('summary', '')}
+ANALYSIS PROTOCOL:
+1. Identify EXACT shifts in Rival (Current vs Previous).
+2. Compare those shifts to Our Current State. (If they added Feature X, do we already have it?)
+3. Suggest 2-3 "Strategic Interventions" ONLY if the rival move creates a gap we must fill or an advantage we must counter.
 
----RAW DATA---
-{json.dumps(new_run.get('data', {}), indent=2)[:3000]}
+RULES:
+- Be ruthless and data-driven.
+- If Rival changes are cosmetic or don't affect {our_product}'s competitive edge, set "changes_detected": false.
+- Actions MUST include 1-3 specific sub-tasks.
 
-Compare these two snapshots and return a JSON object:
+Return JSON:
 {{
   "changes_detected": true/false,
-  "summary": "<one-line headline of what changed>",
-  "narrative": "<2-4 sentences explaining the changes in plain English, as if briefing a CEO. Be specific with numbers, names, prices.>",
+  "summary": "<Headline of competitor move>",
+  "narrative": "<Strategic summary: What they did vs what we have>",
+  "impact": "High | Medium | Low",
   "change_items": [
+     {{ "type": "feature_changed", "title": "...", "description": "...", "severity": "high" }}
+  ],
+  "actions": [
     {{
-      "type": "price_changed | content_added | content_removed | content_updated | feature_changed | no_change",
-      "title": "<short human-readable title>",
-      "description": "<1-2 sentence plain-English explanation of this specific change>",
-      "old_value": "<previous value or null>",
-      "new_value": "<current value or null>",
-      "severity": "high | medium | low"
+      "id": "<uuid>",
+      "title": "<Short title>",
+      "description": "<Since Rival did X and we possess Y, we must Z>",
+      "type": "Strategy",
+      "priority": "High",
+      "effort": "Med",
+      "tasks": [ {{ "id": "<uuid>", "title": "<task>", "duration": "30m" }} ]
     }}
-  ]
+  ],
+  "predictions": ["..."],
+  "opportunities": ["..."],
+  "intelligence_logic": "Benchmark reasoning"
 }}
-If nothing meaningful changed, set changes_detected to false and return empty change_items.
 Return ONLY valid JSON."""
 
         c = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system", "content": "You are a precise change-detection analyst. Return only valid JSON."},
+                {"role": "system", "content": "You are a precise strategic analyst for MirrorAI. Return only valid JSON."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.1, max_tokens=2000,
+            temperature=0.1, max_tokens=3000,
             response_format={"type": "json_object"}
         )
         result = json.loads(c.choices[0].message.content)
@@ -132,7 +192,7 @@ Return ONLY valid JSON."""
         return result
     except Exception as e:
         print(f"[monitor] diff error: {e}")
-        return {"changes_detected": False, "summary": f"Diff failed: {e}", "change_items": [], "narrative": ""}
+        return {"changes_detected": False, "summary": f"Diff failed: {e}", "actions": [], "predictions": [], "opportunities": []}
 
 def _monitor_worker(monitor_id: str):
     """Background worker for a single monitor session."""
@@ -142,75 +202,86 @@ def _monitor_worker(monitor_id: str):
         db.close()
         return
 
-    cfg = db_mon.config
-    url = cfg["url"]
-    tags_str = ", ".join(cfg.get("tags", []))
-    track = cfg.get("trackWhat", "").strip()
+    cfg = db_mon.config or {}
+    rival_url = cfg.get("rivalUrl")
+    our_url = cfg.get("ourUrl")
+    rival_task = cfg.get("rivalTask", "General content").strip()
+    our_task = cfg.get("ourTask", "General content").strip()
     db.close()
 
-    focus_parts = []
-    if tags_str: focus_parts.append(f"categories ({tags_str})")
-    if track: focus_parts.append(f"specific item '{track}'")
-    focus_text = " and ".join(focus_parts) if focus_parts else "general site content"
+    if not rival_url or not our_url:
+        print(f"[monitor:{monitor_id[:8]}] Error: Missing URLs in config")
+        return
 
-    goal = (
-        f"MINIMAL WORK: You are running an automated monitoring sweep at {url}. "
-        f"Your ONLY job is to find and extract information strictly related to {focus_text}. "
-        f"Do NOT explore unrelated pages. Do NOT summarize the whole company. "
-        f"Extract EXACTLY what is needed to observe changes in {focus_text}. "
-        f"Return the data in a clean, structured JSON format."
-    )
+    rival_goal = f"STRATEGIC SCAN: Extract up to 10 key data points related to '{rival_task}' from {rival_url}. Visit max 5 pages. Direct JSON return."
+    our_goal = f"STRATEGIC SCAN: Extract up to 10 key data points related to '{our_task}' from {our_url}. Visit max 5 pages. Direct JSON return."
 
     while True:
         db = SessionLocal()
-        db_mon = db.query(models.Monitor).filter(models.Monitor.id == monitor_id).first()
-        if not db_mon or db_mon.status != "running":
-            db.close()
-            break
-        
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        db_mon.run_count += 1
-        print(f"[monitor:{monitor_id[:8]}] Scan #{db_mon.run_count} at {ts}")
-
-        # 1. Run agent
-        raw_data = {}
         try:
+            db_mon = db.query(models.Monitor).filter(models.Monitor.id == monitor_id).first()
+            if not db_mon or db_mon.status != "running":
+                break
+            
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            db_mon.run_count += 1
+            print(f"[monitor:{monitor_id[:8]}] Cycle #{db_mon.run_count} starting...")
+
             headers = {"X-API-Key": os.getenv("TINYFISH_API_KEY"), "Content-Type": "application/json"}
-            payload = {"url": url, "goal": goal}
-            resp = requests.post("https://agent.tinyfish.ai/v1/automation/run", headers=headers, json=payload, timeout=300)
-            resp.raise_for_status()
-            raw_data = resp.json().get("result", {})
+            
+            # 1. Rival Scan
+            rival_data = {}
+            try:
+                r_rival = requests.post("https://agent.tinyfish.ai/v1/automation/run", headers=headers, json={"url": rival_url, "goal": rival_goal}, timeout=180)
+                r_rival.raise_for_status()
+                rival_data = r_rival.json().get("result", {})
+            except Exception as e:
+                print(f"[monitor] rival scan failed: {e}")
+                rival_data = {"error": str(e)}
+
+            # 2. Our Scan
+            our_data = {}
+            try:
+                r_our = requests.post("https://agent.tinyfish.ai/v1/automation/run", headers=headers, json={"url": our_url, "goal": our_goal}, timeout=180)
+                r_our.raise_for_status()
+                our_data = r_our.json().get("result", {})
+            except Exception as e:
+                print(f"[monitor] our scan failed: {e}")
+                our_data = {"error": str(e)}
+
+            # 3. Persistence (ONLY KEEP LAST 2 RUNS)
+            run_entry = {"timestamp": ts, "rival_data": rival_data, "our_data": our_data, "runNumber": db_mon.run_count}
+            existing_runs = list(db_mon.runs or [])
+            db_mon.runs = (existing_runs + [run_entry])[-2:]
+            db_mon.last_run_at = datetime.now()
+
+            # 4. Strategic Analysis
+            if len(db_mon.runs) >= 2:
+                prev_run = db_mon.runs[-2]
+                curr_run = db_mon.runs[-1]
+                diff = _generate_diff_insights(prev_run, curr_run, rival_url, our_url, cfg)
+                db_mon.insights = diff
+                
+                if diff.get("changes_detected"):
+                    _send_mock_email(db_mon.name, rival_url, diff.get("summary", "Changes"), diff.get("actions", []), diff.get("opportunities", []))
+
+            db.commit()
+            print(f"[monitor:{monitor_id[:8]}] Cycle #{db_mon.run_count} complete.")
         except Exception as e:
-            raw_data = {"error": str(e)}
+            print(f"[monitor] worker loop error: {e}")
+            db.rollback()
+        finally:
+            db.close()
 
-        # 2. Generate summary
-        summary = _summarize_run_data(raw_data, url, tags_str)
-        run_entry = {"timestamp": ts, "data": raw_data, "summary": summary, "runNumber": db_mon.run_count}
-
-        # 3. Store run
-        if not db_mon.runs: db_mon.runs = []
-        new_runs = list(db_mon.runs) + [run_entry]
-        db_mon.runs = new_runs[-10:] # keep last 10
-        db_mon.last_run_at = datetime.now()
-
-        # 4. Insights
-        if len(new_runs) >= 2:
-            prev_run = new_runs[-2]
-            curr_run = new_runs[-1]
-            db_mon.insights = _generate_diff_insights(prev_run, curr_run, url)
-
-        db.commit()
-        db.close()
-
-        # 5. Wait
+        # 5. Rest
         interval = cfg.get("intervalSeconds", 60)
         evt = stop_events.get(monitor_id)
-        if evt and evt.wait(timeout=interval):
-            break
+        if evt and evt.wait(timeout=interval): break
         elif not evt:
             import time
             time.sleep(interval)
-            
+
+    # Final stopped status
     db = SessionLocal()
     db_mon = db.query(models.Monitor).filter(models.Monitor.id == monitor_id).first()
     if db_mon:
@@ -228,7 +299,7 @@ def create_monitor(data: MonitorCreate, db: Session = Depends(get_db), x_user_id
         id=mid,
         user_id=x_user_id,
         name=data.name,
-        config=data.model_dump(),
+        config=data.config,
         status="idle",
         runs=[],
         insights={},
@@ -286,6 +357,22 @@ def delete_monitor(mid: str, db: Session = Depends(get_db), x_user_id: str = Hea
         db.delete(mon)
         db.commit()
     return {"success": True}
+
+@router.post("/monitors/actions")
+def save_scheduled_action(data: StrategicActionCreate, db: Session = Depends(get_db)):
+    """Persist a scheduled action to the DB."""
+    new_action = models.StrategicAction(
+        id=str(uuid.uuid4()),
+        monitor_id=data.monitor_id,
+        title=data.title,
+        description=data.description,
+        scheduled_date=data.scheduled_date,
+        tasks=data.tasks,
+        status="scheduled"
+    )
+    db.add(new_action)
+    db.commit()
+    return {"success": True, "id": new_action.id}
 
 def _serialize_monitor(m) -> dict:
     """Strip internal fields for API response."""

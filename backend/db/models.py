@@ -93,3 +93,20 @@ class Monitor(Base):
     last_run_at = Column(DateTime(timezone=True))
     run_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    scheduled_actions = relationship("StrategicAction", back_populates="monitor", cascade="all, delete-orphan")
+
+
+class StrategicAction(Base):
+    __tablename__ = "strategic_actions"
+
+    id = Column(String, primary_key=True, index=True)
+    monitor_id = Column(String, ForeignKey("monitors.id", ondelete="CASCADE"), index=True)
+    title = Column(String, nullable=False)
+    description = Column(Text)
+    status = Column(String, default="scheduled") # scheduled, completed
+    scheduled_date = Column(String)
+    tasks = Column(JSON) # [{title, duration, completed}]
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    monitor = relationship("Monitor", back_populates="scheduled_actions")
