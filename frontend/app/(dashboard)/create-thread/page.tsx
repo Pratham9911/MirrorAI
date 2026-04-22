@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { 
+import {
   Plus,
   Play,
   Trash2,
@@ -11,7 +11,10 @@ import {
   FileText,
   Clock,
   CheckCircle2,
-  Loader2
+  Loader2,
+  X,
+  Zap,
+  AlertTriangle
 } from "lucide-react"
 import { Skeleton, SkeletonTable } from "@/components/skeleton-loader"
 import { Button } from "@/components/ui/button"
@@ -103,18 +106,34 @@ export default function CreateThreadPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [threads, setThreads] = useState<Thread[]>([])
   const [searchQuery, setSearchQuery] = useState("")
+  const [credits, setCredits] = useState<number | null>(null)
+  const [showNoCreditsModal, setShowNoCreditsModal] = useState(false)
 
   useEffect(() => {
-    async function loadThreads() {
+    async function loadThreadsAndUser() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.user?.id) return
 
+        // Load Threads
         const resp = await fetch(`${BACKEND_URL}/api/threads`, {
-          headers: { 'X-User-ID': session.user.id }
+          headers: { 
+            'X-User-ID': session.user.id,
+            'X-User-Email': session.user.email || ''
+          }
         })
         const apiThreads = await resp.json()
-        
+
+        // Load User (for credits)
+        const uResp = await fetch(`${BACKEND_URL}/api/user/me`, {
+          headers: { 
+            'X-User-ID': session.user.id,
+            'X-User-Email': session.user.email || ''
+          }
+        })
+        const uData = await uResp.json()
+        setCredits(uData.credits)
+
         // Normalize helper
         const normalize = (t: any) => ({
           ...t,
@@ -129,7 +148,7 @@ export default function CreateThreadPage() {
         setIsLoading(false)
       }
     }
-    loadThreads()
+    loadThreadsAndUser()
   }, [])
 
   const filteredThreads = threads.filter(thread => {
@@ -144,30 +163,43 @@ export default function CreateThreadPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
 
-      await fetch(`${BACKEND_URL}/api/threads/${id}`, { 
+      await fetch(`${BACKEND_URL}/api/threads/${id}`, {
         method: 'DELETE',
-        headers: { 'X-User-ID': session.user.id }
+        headers: { 
+          'X-User-ID': session.user.id,
+          'X-User-Email': session.user.email || ''
+        }
       })
       setThreads(prev => prev.filter(t => t.id !== id))
     } catch (e) { console.error(e) }
   }
 
   const handleRun = async (id: string) => {
+    // Credit Check
+    if (credits !== null && credits < 0.8) {
+      setShowNoCreditsModal(true)
+      return
+    }
+
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
 
-      await fetch(`${BACKEND_URL}/api/threads/${id}/run`, { 
+      await fetch(`${BACKEND_URL}/api/threads/${id}/run`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'X-User-ID': session.user.id
+          'X-User-ID': session.user.id,
+          'X-User-Email': session.user.email || ''
         }
       })
-      
-      setThreads(prev => prev.map(t => 
+
+      setThreads(prev => prev.map(t =>
         t.id === id ? { ...t, status: "running" as const } : t
       ))
+
+      // Update local credits immediately
+      if (credits !== null) setCredits(credits - 0.8)
     } catch (e) { console.error(e) }
   }
 
@@ -245,7 +277,7 @@ export default function CreateThreadPage() {
           </thead>
           <tbody className="divide-y divide-border">
             {filteredThreads.map((thread) => (
-              <tr 
+              <tr
                 key={thread.id}
                 className="group transition-colors hover:bg-muted/20"
               >
@@ -294,7 +326,7 @@ export default function CreateThreadPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-40 bg-card border-border">
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onClick={() => handleDelete(thread.id)}
                           className="gap-2 text-destructive focus:text-destructive cursor-pointer"
                         >
@@ -322,6 +354,59 @@ export default function CreateThreadPage() {
           </div>
         )}
       </div>
+
+      {/* ─── No Credits Modal ────────────────────────────────────────── */}
+      {showNoCreditsModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-300"
+            onClick={() => setShowNoCreditsModal(false)}
+          />
+
+          {/* Modal Content */}
+          <div className="relative w-full max-w-md overflow-hidden rounded-[2.5rem] border border-border bg-card shadow-2xl animate-in zoom-in-95 fade-in duration-300">
+            {/* Top Pattern */}
+            <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-warning/10 to-transparent pointer-events-none" />
+
+            <div className="relative p-10 flex flex-col items-center text-center">
+              <div className="mb-6 relative">
+                <div className="absolute inset-0 bg-warning/20 blur-2xl rounded-full animate-pulse" />
+                <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-muted border-2 border-warning/50">
+                  <Zap className="h-10 w-10 text-warning fill-warning" />
+                </div>
+                <div className="absolute -top-2 -right-2 rounded-full bg-destructive p-1.5 shadow-lg">
+                  <AlertTriangle className="h-4 w-4 text-white" />
+                </div>
+              </div>
+
+              <h2 className="text-2xl font-black text-foreground tracking-tight mb-3">
+                Energy Depleted
+              </h2>
+              <p className="text-muted-foreground leading-relaxed mb-8 px-4">
+                You've reached your daily intelligence limit. Your credits will automatically refill in 24 hours, or you can upgrade for a higher capacity.
+              </p>
+
+              <div className="w-full space-y-3">
+                <a href="https://www.mirror-ai.in/#pricing" target="_blank" rel="noopener noreferrer" className="w-full">
+                  <Button
+                    className="w-full h-14 rounded-2xl bg-foreground text-background font-bold hover:opacity-90 transition-all text-base"
+                  >
+                    Upgrade to Pro
+                  </Button>
+                </a>
+                <Button
+                  variant="ghost"
+                  className="w-full h-12 rounded-2xl text-muted-foreground font-medium hover:text-foreground"
+                  onClick={() => setShowNoCreditsModal(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

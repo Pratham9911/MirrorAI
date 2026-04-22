@@ -11,29 +11,50 @@ import {
   Globe,
   Radar,
   FileText,
-  Loader2
+  Loader2,
+  Building2
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabaseClient"
+import { BACKEND_URL } from "@/lib/config"
 
 export default function OverviewPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
+  const [userData, setUserData] = useState<any>(null)
+  const [globalStats, setGlobalStats] = useState<any>(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-    })
-    
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-    })
+    async function fetchData() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.id) return
+        setUser(session.user)
 
-    const timer = setTimeout(() => setIsLoading(false), 800)
-    return () => {
-      clearTimeout(timer)
-      subscription.unsubscribe()
+        const res = await fetch(`${BACKEND_URL}/api/user/me`, {
+          headers: { 
+            'X-User-ID': session.user.id,
+            'X-User-Email': session.user.email || ''
+          }
+        })
+        const data = await res.json()
+        if (!data.error) {
+          setUserData(data)
+        }
+
+        // Fetch global stats
+        const gRes = await fetch(`${BACKEND_URL}/api/admin/stats`)
+        const gData = await gRes.json()
+        setGlobalStats(gData)
+
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setIsLoading(false)
+      }
     }
+    
+    fetchData()
   }, [])
 
   if (isLoading) {
@@ -112,31 +133,31 @@ export default function OverviewPage() {
       {/* ─── Live Stats ─────────────────────────────────────────────── */}
       <div className="mb-12 grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
         <div className="rounded-2xl border border-border bg-card p-5 group transition-all hover:bg-muted/30">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Active Monitors</p>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Runs</p>
           <div className="flex items-end justify-between">
-            <h3 className="text-3xl font-bold text-foreground">12</h3>
+            <h3 className="text-3xl font-bold text-foreground">{userData?.stats?.total_runs ?? 0}</h3>
             <Activity className="h-5 w-5 text-success animate-pulse-live" />
           </div>
         </div>
         <div className="rounded-2xl border border-border bg-card p-5 group transition-all hover:bg-muted/30">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Signals Caught</p>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Rivals Analyzed</p>
           <div className="flex items-end justify-between">
-            <h3 className="text-3xl font-bold text-foreground">847</h3>
+            <h3 className="text-3xl font-bold text-foreground">{userData?.stats?.total_competitors ?? 0}</h3>
+            <Target className="h-5 w-5 text-info" />
+          </div>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-5 group transition-all hover:bg-muted/30">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Signals Detected</p>
+          <div className="flex items-end justify-between">
+            <h3 className="text-3xl font-bold text-foreground">{userData?.stats?.total_signals ?? 0}</h3>
             <Zap className="h-5 w-5 text-warning" />
           </div>
         </div>
         <div className="rounded-2xl border border-border bg-card p-5 group transition-all hover:bg-muted/30">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Total Scans</p>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Global Intelligence</p>
           <div className="flex items-end justify-between">
-            <h3 className="text-3xl font-bold text-foreground">3,291</h3>
-            <Globe className="h-5 w-5 text-info" />
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-5 group transition-all hover:bg-muted/30">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">System Status</p>
-          <div className="flex items-end justify-between">
-            <h3 className="text-lg font-bold text-success uppercase">Optimal</h3>
-            <CheckCircle2 className="h-5 w-5 text-success" />
+            <h3 className="text-3xl font-bold text-success tabular-nums">{globalStats?.total_signals?.toLocaleString() ?? "..."}</h3>
+            <Globe className="h-5 w-5 text-success" />
           </div>
         </div>
       </div>
@@ -180,6 +201,40 @@ export default function OverviewPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* ─── Plan Comparison ────────────────────────────────────────── */}
+      <div className="mt-16 mb-8 flex items-center gap-2 px-1">
+        <Building2 className="h-5 w-5 text-muted-foreground" />
+        <h2 className="text-lg font-bold text-foreground tracking-tight">Plan Architecture</h2>
+      </div>
+
+      <div className="mb-12 overflow-x-auto rounded-3xl border border-border bg-card">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-border bg-muted/30">
+              <th className="px-8 py-5 text-xs font-black uppercase tracking-widest text-muted-foreground">Feature</th>
+              <th className="px-8 py-5 text-xs font-black uppercase tracking-widest text-muted-foreground">Free Tier</th>
+              <th className="px-8 py-5 text-xs font-black uppercase tracking-widest text-info">Pro Account</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {[
+              { f: "Daily Credits", free: "20", pro: "Unlimited Refills" },
+              { f: "Credit Carry-over", free: "Max 30", pro: "Max 250" },
+              { f: "Competitor Limit", free: "2 per thread", pro: "5 per thread" },
+              { f: "Agent Logic", free: "Standard", pro: "Priority Llama 3.3" },
+              { f: "Scan Interval", free: "Min 1 hr", pro: "Min 1 min" },
+              { f: "Custom Reports", free: "Standard", pro: "Executive PDF Export" },
+            ].map((row, i) => (
+              <tr key={i} className="group transition-colors hover:bg-muted/10">
+                <td className="px-8 py-4 text-sm font-medium text-foreground">{row.f}</td>
+                <td className="px-8 py-4 text-sm text-muted-foreground">{row.free}</td>
+                <td className="px-8 py-4 text-sm font-bold text-info">{row.pro}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {/* ─── Recent signals indicator ───────────────────────────────── */}

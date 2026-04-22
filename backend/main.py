@@ -68,8 +68,48 @@ def get_db():
     finally:
         db.close()
 
-# Memory-only DBs are removed. Using Supabase instead.
+def get_current_user(db: Session = Depends(get_db), x_user_id: str = Header(None), x_user_email: str = Header(None)):
+    if not x_user_id:
+        return None
+    
+    user = db.query(models.User).filter(models.User.id == x_user_id).first()
+    
+    now = datetime.now()
+    if not user:
+        user = models.User(
+            id=x_user_id, 
+            email=x_user_email,
+            credits=20.0, 
+            plan_type="free", 
+            max_credits=30,
+            last_reset_at=now
+        )
+        db.add(user)
+        
+        # Update global users count
+        stats = db.query(models.GlobalStats).first()
+        if not stats:
+            stats = models.GlobalStats(id=1, total_users=1)
+            db.add(stats)
+        else:
+            stats.total_users += 1
+        db.commit()
+        db.refresh(user)
+    else:
+        # Update email if missing (for existing users)
+        if x_user_email and not user.email:
+            user.email = x_user_email
+            db.commit()
+            db.refresh(user)
 
+        # Daily reset logic
+        if user.last_reset_at.date() < now.date():
+            user.credits = min(user.max_credits, user.credits + 20.0)
+            user.last_reset_at = now
+            db.commit()
+            db.refresh(user)
+            
+    return user
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SSE WORKER  — single run-sse call: live logs + final structured result
@@ -123,6 +163,17 @@ def sse_worker(thread_id: str, url: str, goal: str) -> tuple[str, dict]:
                     print(f"[sse:{thread_id[:8]}] STARTED")
                     log_id = str(uuid.uuid4())
                     db.add(models.Log(id=log_id, run_id=thread_id, message="Browser session started", type="success", timestamp=ts))
+                    # Deduct credits & update stats
+                    run = db.query(models.Run).filter(models.Run.id == thread_id).first()
+                    user = db.query(models.User).filter(models.User.id == run.user_id).first() if run else None
+                    if user:
+                        user.credits = max(0, user.credits - 0.8)
+                        user.total_signals += 1
+                        global_stats = db.query(models.GlobalStats).first()
+                        if not global_stats:
+                            db.add(models.GlobalStats(id=1, total_signals=1))
+                        else:
+                            global_stats.total_signals += 1
                     db.commit()
 
                 elif event_type == "STREAMING_URL":
@@ -134,6 +185,16 @@ def sse_worker(thread_id: str, url: str, goal: str) -> tuple[str, dict]:
                     
                     log_id = str(uuid.uuid4())
                     db.add(models.Log(id=log_id, run_id=thread_id, message=f"Streaming at {streaming_url}", type="info", timestamp=ts))
+                    # Deduct credits & update stats
+                    user = db.query(models.User).filter(models.User.id == run.user_id).first() if run else None
+                    if user:
+                        # user.credits = max(0, user.credits - 0.8)
+                        user.total_signals += 1
+                        global_stats = db.query(models.GlobalStats).first()
+                        if not global_stats:
+                            db.add(models.GlobalStats(id=1, total_signals=1))
+                        else:
+                            global_stats.total_signals += 1
                     db.commit()
 
                 elif event_type == "PROGRESS":
@@ -147,6 +208,20 @@ def sse_worker(thread_id: str, url: str, goal: str) -> tuple[str, dict]:
                     log_id = str(uuid.uuid4())
                     db.add(models.Log(id=log_id, run_id=thread_id, message=f"→ {purpose}", type="warning", timestamp=ts))
                     
+                    # Deduct credits for log and update stats (counting logs as 'signals' for stats)
+                    user = db.query(models.User).filter(models.User.id == run.user_id).first() if run else None
+                    if user:
+                        user.credits = max(0, user.credits - 0.8)
+                        user.total_signals += 1
+                        
+                        # Update global stats
+                        global_stats = db.query(models.GlobalStats).first()
+                        if not global_stats:
+                            global_stats = models.GlobalStats(id=1, total_signals=1)
+                            db.add(global_stats)
+                        else:
+                            global_stats.total_signals += 1
+
                     pl = purpose.lower()
                     if any(k in pl for k in ["price", "cost", "plan", "pricing", "₹", "$"]):
                         db.add(models.Signal(id=str(uuid.uuid4()), run_id=thread_id, type="price", title="Pricing Info Detected", description=f"Found pricing data: {purpose[:80]}", time=ts))
@@ -166,6 +241,16 @@ def sse_worker(thread_id: str, url: str, goal: str) -> tuple[str, dict]:
                     
                     log_id = str(uuid.uuid4())
                     db.add(models.Log(id=log_id, run_id=thread_id, message="Agent analysis complete ✓", type="success", timestamp=ts))
+                    # Deduct credits & update stats
+                    user = db.query(models.User).filter(models.User.id == run.user_id).first() if run else None
+                    if user:
+                        user.credits = max(0, user.credits - 0.8)
+                        user.total_signals += 1
+                        global_stats = db.query(models.GlobalStats).first()
+                        if not global_stats:
+                            db.add(models.GlobalStats(id=1, total_signals=1))
+                        else:
+                            global_stats.total_signals += 1
                     db.commit()
 
     except Exception as e:
@@ -331,9 +416,7 @@ OUTPUT SCHEMA — return ONLY this JSON:
 # ─────────────────────────────────────────────────────────────────────────────
 def process_thread(thread_id: str, thread: dict):
     print(f"[backend] Starting process_thread for {thread_id}")
-    url = thread["competitors"][0]["url"] if thread.get("competitors") else "https://www.google.com"
     signals = []
-
     tags_str = ", ".join(thread.get("tags", []))
     
     # Ensure competitor details are passed correctly to the agent
@@ -345,15 +428,30 @@ def process_thread(thread_id: str, thread: dict):
         competitors_info.append(info)
     comps_str = " | ".join(competitors_info)
 
-    goal = (
-        f"You are a skilled researcher acting on behalf of my idea/profile: '{thread['productName']}'. "
-        f"My goal/description is: '{thread['description']}'. "
-        f"Your task is to visit the rival site(s): {comps_str or url}. "
-        f"Analyze and extract exactly what we want to compare: {tags_str or 'general info, pricing, features'}. "
-        f"Also gather customer reviews where possible. Work fast. "
-        f"Look out for their strengths and what they do well vs what I am building. "
-        f"Return a comprehensive structured JSON with all findings."
-    )
+    if not thread.get("competitors"):
+        url = "https://www.google.com/search?q=" + thread['productName'].replace(" ", "+") + "+competitors"
+        goal = (
+            f"You are a skilled researcher acting on behalf of my idea/profile: '{thread['productName']}'. "
+            f"My goal/description is: '{thread['description']}'. "
+            f"I have not provided any competitors. Your FIRST task is to find at least one direct competitor online. "
+            f"Once you find a competitor, visit their site and analyze it. "
+            f"Extract exactly what we want to compare: {tags_str or 'general info, pricing, features'}. "
+            f"Gather customer reviews where possible. Return a comprehensive structured JSON with all findings."
+        )
+        # We will add 1 to competitor count since the agent will find one
+        found_competitor_auto = True
+    else:
+        url = thread["competitors"][0]["url"]
+        goal = (
+            f"You are a skilled researcher acting on behalf of my idea/profile: '{thread['productName']}'. "
+            f"My goal/description is: '{thread['description']}'. "
+            f"Your task is to visit the rival site(s): {comps_str}. "
+            f"Analyze and extract exactly what we want to compare: {tags_str or 'general info, pricing, features'}. "
+            f"Also gather customer reviews where possible. Work fast. "
+            f"Look out for their strengths and what they do well vs what I am building. "
+            f"Return a comprehensive structured JSON with all findings."
+        )
+        found_competitor_auto = False
 
     # ── ONE SSE call does the job of both stream_worker + run_worker ──
     print(f"[backend] Thread {thread_id}: Starting SSE worker (single call)")
@@ -366,6 +464,17 @@ def process_thread(thread_id: str, thread: dict):
         # We need user_id here as well
         user_id = thread.get("user_id", "default_user")
         
+        # Update competitor count if the agent found one automatically
+        if found_competitor_auto:
+            user = db.query(models.User).filter(models.User.id == user_id).first()
+            if user:
+                user.total_competitors += 1
+            global_stats = db.query(models.GlobalStats).first()
+            if not global_stats:
+                global_stats = models.GlobalStats(id=1, total_competitors=1)
+                db.add(global_stats)
+            else:
+                global_stats.total_competitors += 1
         report.update({
             "id": thread_id, "name": thread["threadName"], "product": thread["productName"],
             "description": thread["description"], "completedAt": datetime.now().strftime("%Y-%m-%d"),
@@ -417,9 +526,9 @@ def process_thread(thread_id: str, thread: dict):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/api/threads")
-def get_threads(db: Session = Depends(get_db), x_user_id: str = Header(None)):
-    if not x_user_id: return []
-    threads = db.query(models.Thread).filter(models.Thread.user_id == x_user_id).all()
+def get_threads(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    if not user: return []
+    threads = db.query(models.Thread).filter(models.Thread.user_id == user.id).all()
     # Normalize back for frontend
     res = []
     for t in threads:
@@ -440,15 +549,21 @@ def get_threads(db: Session = Depends(get_db), x_user_id: str = Header(None)):
     return res
 
 @app.post("/api/threads")
-def create_thread(data: ThreadCreate, db: Session = Depends(get_db), x_user_id: str = Header(None)):
-    if not x_user_id: return {"error": "Unauthorized"}
+def create_thread(data: ThreadCreate, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    if not user: return {"error": "Unauthorized"}
+    
+    # Check competitor limits
+    comp_limit = 2 if user.plan_type == "free" else 5
+    if len(data.competitors) > comp_limit:
+        return {"error": f"Competitor limit exceeded. {user.plan_type.capitalize()} plan allows up to {comp_limit} competitors."}
+
     tid = str(uuid.uuid4())
     t = data.model_dump()
     t = _normalize_thread(t)
     
     db_thread = models.Thread(
         id=tid,
-        user_id=x_user_id,
+        user_id=user.id,
         name=t["threadName"],
         product=t["productName"],
         description=t["description"],
@@ -472,26 +587,26 @@ def create_thread(data: ThreadCreate, db: Session = Depends(get_db), x_user_id: 
     }
 
 @app.delete("/api/threads/{tid}")
-def delete_thread(tid: str, db: Session = Depends(get_db), x_user_id: str = Header(None)):
-    if not x_user_id: return {"error": "Unauthorized"}
-    db_thread = db.query(models.Thread).filter(models.Thread.id == tid, models.Thread.user_id == x_user_id).first()
+def delete_thread(tid: str, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    if not user: return {"error": "Unauthorized"}
+    db_thread = db.query(models.Thread).filter(models.Thread.id == tid, models.Thread.user_id == user.id).first()
     if db_thread:
         db.delete(db_thread)
         db.commit()
     return {"success": True}
 
 @app.post("/api/threads/{tid}/run")
-def run_thread(tid: str, thread_data: Optional[ThreadCreate] = None, db: Session = Depends(get_db), x_user_id: str = Header(None)):
-    if not x_user_id: return {"error": "Unauthorized"}
+def run_thread(tid: str, thread_data: Optional[ThreadCreate] = None, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    if not user: return {"error": "Unauthorized"}
     
-    db_thread = db.query(models.Thread).filter(models.Thread.id == tid, models.Thread.user_id == x_user_id).first()
+    db_thread = db.query(models.Thread).filter(models.Thread.id == tid, models.Thread.user_id == user.id).first()
     
     if not db_thread and thread_data:
         t = thread_data.model_dump()
         t = _normalize_thread(t)
         db_thread = models.Thread(
             id=tid,
-            user_id=x_user_id,
+            user_id=user.id,
             name=t["threadName"],
             product=t["productName"],
             description=t["description"],
@@ -516,8 +631,22 @@ def run_thread(tid: str, thread_data: Optional[ThreadCreate] = None, db: Session
         db.query(models.Log).filter(models.Log.run_id == tid).delete()
         db.query(models.Signal).filter(models.Signal.run_id == tid).delete()
     else:
-        db_run = models.Run(id=tid, user_id=x_user_id, status="running", progress=3, current_url="Initializing...")
+        db_run = models.Run(id=tid, user_id=user.id, status="running", progress=3, current_url="Initializing...")
         db.add(db_run)
+    
+    db.commit()
+
+    # Update stats
+    user.total_runs += 1
+    user.total_competitors += len(db_thread.competitors)
+    
+    global_stats = db.query(models.GlobalStats).first()
+    if not global_stats:
+        global_stats = models.GlobalStats(id=1, total_runs=1, total_competitors=len(db_thread.competitors))
+        db.add(global_stats)
+    else:
+        global_stats.total_runs += 1
+        global_stats.total_competitors += len(db_thread.competitors)
     
     db.commit()
 
@@ -525,15 +654,43 @@ def run_thread(tid: str, thread_data: Optional[ThreadCreate] = None, db: Session
     thread_dict = {
         "id": tid, "threadName": db_thread.name, "productName": db_thread.product,
         "description": db_thread.description, "tags": db_thread.tags,
-        "competitors": db_thread.competitors, "user_id": x_user_id
+        "competitors": db_thread.competitors, "user_id": user.id
     }
     threading.Thread(target=process_thread, args=(tid, thread_dict), daemon=True).start()
     return {"success": True}
 
+@app.get("/api/user/me")
+def get_me(user: models.User = Depends(get_current_user)):
+    if not user: return {"error": "Unauthorized"}
+    return {
+        "id": user.id,
+        "credits": round(user.credits, 1),
+        "plan_type": user.plan_type,
+        "max_credits": user.max_credits,
+        "stats": {
+            "total_runs": user.total_runs,
+            "total_competitors": user.total_competitors,
+            "total_signals": user.total_signals
+        }
+    }
+
+@app.get("/api/admin/stats")
+def get_global_stats(db: Session = Depends(get_db)):
+    # In a real app, this would be protected by admin role
+    stats = db.query(models.GlobalStats).first()
+    if not stats:
+        return {"total_runs": 0, "total_competitors": 0, "total_signals": 0, "total_users": 0}
+    return {
+        "total_runs": stats.total_runs,
+        "total_competitors": stats.total_competitors,
+        "total_signals": stats.total_signals,
+        "total_users": stats.total_users
+    }
+
 @app.get("/api/runs")
-def get_runs(db: Session = Depends(get_db), x_user_id: str = Header(None)):
-    if not x_user_id: return []
-    runs = db.query(models.Run).filter(models.Run.user_id == x_user_id).all()
+def get_runs(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    if not user: return []
+    runs = db.query(models.Run).filter(models.Run.user_id == user.id).all()
     res = []
     for r in runs:
         # Fetch logs and signals
@@ -551,19 +708,19 @@ def get_runs(db: Session = Depends(get_db), x_user_id: str = Header(None)):
     return res
 
 @app.get("/api/insights")
-def get_insights(db: Session = Depends(get_db), x_user_id: str = Header(None)):
-    if not x_user_id: return []
-    insights = db.query(models.Insight).filter(models.Insight.user_id == x_user_id).all()
+def get_insights(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    if not user: return []
+    insights = db.query(models.Insight).filter(models.Insight.user_id == user.id).all()
     return [i.data for i in insights]
 
 @app.get("/api/insights/{tid}")
-def get_insight(tid: str, db: Session = Depends(get_db), x_user_id: str = Header(None)):
-    insight = db.query(models.Insight).filter(models.Insight.id == tid, models.Insight.user_id == x_user_id).first()
+def get_insight(tid: str, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    insight = db.query(models.Insight).filter(models.Insight.id == tid, models.Insight.user_id == user.id).first()
     return insight.data if insight else None
 
 @app.delete("/api/insights/{tid}")
-def delete_insight(tid: str, db: Session = Depends(get_db), x_user_id: str = Header(None)):
-    db.query(models.Insight).filter(models.Insight.id == tid, models.Insight.user_id == x_user_id).delete()
+def delete_insight(tid: str, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    db.query(models.Insight).filter(models.Insight.id == tid, models.Insight.user_id == user.id).delete()
     db.commit()
     return {"success": True}
 

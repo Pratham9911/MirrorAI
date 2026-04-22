@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { 
   ArrowLeft,
@@ -38,6 +38,28 @@ const availableTags = [
 
 export default function NewThreadPage() {
   const router = useRouter()
+  const [userPlan, setUserPlan] = useState<string>("free")
+  
+  useEffect(() => {
+    async function fetchUser() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.id) return
+        const res = await fetch(`${BACKEND_URL}/api/user/me`, {
+          headers: { 
+            'X-User-ID': session.user.id,
+            'X-User-Email': session.user.email || ''
+          }
+        })
+        const data = await res.json()
+        if (!data.error) setUserPlan(data.plan_type)
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    fetchUser()
+  }, [])
+
   const [formData, setFormData] = useState({
     threadName: "",
     productName: "",
@@ -62,6 +84,11 @@ export default function NewThreadPage() {
   }
 
   const handleAddCompetitor = () => {
+    const limit = userPlan === "pro" ? 5 : 2
+    if (competitors.length >= limit) {
+      alert(`Limit reached. ${userPlan.toUpperCase()} plan allows maximum ${limit} competitors per thread.`)
+      return
+    }
     if (newCompetitor.name && newCompetitor.url) {
       setCompetitors([
         ...competitors,
@@ -86,7 +113,8 @@ export default function NewThreadPage() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'X-User-ID': session.user.id
+          'X-User-ID': session.user.id,
+          'X-User-Email': session.user.email || ''
         },
         body: JSON.stringify({ ...formData, competitors })
       })

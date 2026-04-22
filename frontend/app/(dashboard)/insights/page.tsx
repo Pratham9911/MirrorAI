@@ -52,7 +52,10 @@ export default function InsightsPage() {
         if (!session?.user?.id) return
 
         const res = await fetch(`${BACKEND_URL}/api/insights`, {
-          headers: { 'X-User-ID': session.user.id }
+          headers: { 
+            'X-User-ID': session.user.id,
+            'X-User-Email': session.user.email || ''
+          }
         })
         const apiInsights = await res.json()
         
@@ -78,7 +81,10 @@ export default function InsightsPage() {
 
       await fetch(`${BACKEND_URL}/api/insights/${id}`, { 
         method: "DELETE",
-        headers: { 'X-User-ID': session.user.id }
+        headers: { 
+          'X-User-ID': session.user.id,
+          'X-User-Email': session.user.email || ''
+        }
       })
       
       setThreads(prev => prev.filter(t => t.id !== id))

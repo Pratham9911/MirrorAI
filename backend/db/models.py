@@ -110,3 +110,30 @@ class StrategicAction(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     monitor = relationship("Monitor", back_populates="scheduled_actions")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, index=True) # Supabase user ID
+    email = Column(String, unique=True, index=True)
+    credits = Column(Float, default=20.0)
+    plan_type = Column(String, default="free") # free, pro
+    max_credits = Column(Integer, default=30)
+    last_reset_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Stats
+    total_runs = Column(Integer, default=0)
+    total_competitors = Column(Integer, default=0)
+    total_signals = Column(Integer, default=0)
+
+
+class GlobalStats(Base):
+    __tablename__ = "global_stats"
+
+    id = Column(Integer, primary_key=True, default=1)
+    total_runs = Column(Integer, default=0)
+    total_competitors = Column(Integer, default=0)
+    total_signals = Column(Integer, default=0)
+    total_users = Column(Integer, default=0)

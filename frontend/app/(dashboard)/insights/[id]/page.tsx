@@ -255,7 +255,10 @@ export default function InsightReportPage({ params }: { params: Promise<{ id: st
         if (!session?.user?.id) return
 
         const res = await fetch(`${BACKEND_URL}/api/insights/${id}`, {
-          headers: { 'X-User-ID': session.user.id }
+          headers: { 
+            'X-User-ID': session.user.id,
+            'X-User-Email': session.user.email || ''
+          }
         })
         if (res.ok) {
           const data = await res.json()

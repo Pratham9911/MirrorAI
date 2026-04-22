@@ -91,7 +91,10 @@ export default function ActiveRunsPage() {
         if (!session?.user?.id) return
 
         const res = await fetch(`${BACKEND_URL}/api/runs`, {
-          headers: { 'X-User-ID': session.user.id }
+          headers: { 
+            'X-User-ID': session.user.id,
+            'X-User-Email': session.user.email || ''
+          }
         })
         const data = await res.json()
         
