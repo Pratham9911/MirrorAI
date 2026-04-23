@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect } from "react";
+import { BACKEND_URL } from "@/lib/config";
 import { Navigation } from "@/components/landing/navigation";
 import { HeroSection } from "@/components/landing/hero-section";
 import { FeaturesSection } from "@/components/landing/features-section";
@@ -13,19 +17,23 @@ import { CtaSection } from "@/components/landing/cta-section";
 import { FooterSection } from "@/components/landing/footer-section";
 
 export default function Home() {
+  useEffect(() => {
+    // Ping the backend to wake it up if it's sleeping (Render free tier)
+    fetch(`${BACKEND_URL}/health`).catch(() => {
+      // Ignore errors, we just want to signal the server
+    })
+  }, []);
+
   return (
     <main className="relative min-h-screen overflow-x-hidden">
       <Navigation />
       <HeroSection />
       <FeaturesSection />
       <HowItWorksSection />
-      {/* <InfrastructureSection /> */}
-      {/* <MetricsSection /> */}
       <IntegrationsSection />
       <SecuritySection />
       <PricingSection />
       <DevelopersSection />
-      {/* <TestimonialsSection /> */}
       <CtaSection />
       <FooterSection />
     </main>

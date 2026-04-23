@@ -9,6 +9,8 @@ from typing import List, Dict, Optional
 import traceback
 import os
 import requests
+import smtplib
+from email.mime.text import MIMEText
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -34,6 +36,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring and periodic wake-ups."""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
 class ThreadCreate(BaseModel):
     id: Optional[str] = None
     threadName: Optional[str] = None
@@ -45,6 +52,11 @@ class ThreadCreate(BaseModel):
     competitors: List[Dict[str, str]] = []
     # Accept and ignore extra fields from localStorage
     model_config = {"extra": "allow"}
+
+class UpgradeRequest(BaseModel):
+    user_email: str
+    plan_type: str
+    message: Optional[str] = None
 
 def _normalize_thread(t: dict) -> dict:
     """Ensures both 'threadName'/'productName' AND 'name'/'product' exist."""
@@ -67,6 +79,73 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def send_upgrade_email(user_email: str, plan_type: str, message: Optional[str] = None):
+    """Sends notification to admin and an acknowledgement to the user."""
+    email_user = os.getenv("SMTP_EMAIL")
+    email_pass = os.getenv("SMTP_PASSWORD")
+    
+    if not email_user or not email_pass:
+        print("❌ SMTP credentials missing")
+        return False
+
+    # 1. Admin Notification
+    admin_subject = f"🚀 New {plan_type} Plan Request - MirrorAI"
+    admin_body = f"""
+New plan upgrade request received!
+
+User Email: {user_email}
+Requested Plan: {plan_type}
+{f"Requirements/Message: {message}" if message else ""}
+
+Credit Allocation: {'500 credits/month' if plan_type == 'Pro' else 'Custom credits'}
+Price: {'$5' if plan_type == 'Pro' else 'Custom'}
+"""
+    admin_msg = MIMEText(admin_body)
+    admin_msg["Subject"] = admin_subject
+    admin_msg["From"] = email_user
+    admin_msg["To"] = email_user
+
+    # 2. User Acknowledgement
+    user_subject = "Welcome to MirrorAI Premium - Request Received"
+    user_body = f"""
+Hello,
+
+We've received your request to upgrade to the {plan_type} plan on MirrorAI.
+
+Our team is currently reviewing your profile and setup requirements. 
+You will be contacted by one of our specialists shortly (usually within < 4 hours) to finalize your transition and credit allocation.
+
+Thank you for choosing MirrorAI.
+
+Best regards,
+The MirrorAI Team
+"""
+    user_msg = MIMEText(user_body)
+    user_msg["Subject"] = user_subject
+    user_msg["From"] = email_user
+    user_msg["To"] = user_email
+
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(email_user, email_pass)
+            server.send_message(admin_msg)
+            server.send_message(user_msg)
+        print("✅ Emails sent successfully")
+        return True
+    except Exception as e:
+        print("❌ Error sending emails:", e)
+        return False
+
+@app.post("/api/upgrade-request")
+async def handle_upgrade_request(req: UpgradeRequest):
+    """Endpoint for the frontend to submit plan upgrade requests."""
+    success = send_upgrade_email(req.user_email, req.plan_type, req.message)
+    if success:
+        return {"status": "success", "message": "We will contact you soon through mail"}
+    else:
+        return {"status": "error", "message": "Failed to send request. Please try again later."}
 
 def get_current_user(db: Session = Depends(get_db), x_user_id: str = Header(None), x_user_email: str = Header(None)):
     if not x_user_id:

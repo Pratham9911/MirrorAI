@@ -203,39 +203,7 @@ export default function OverviewPage() {
         ))}
       </div>
 
-      {/* ─── Plan Comparison ────────────────────────────────────────── */}
-      <div className="mt-16 mb-8 flex items-center gap-2 px-1">
-        <Building2 className="h-5 w-5 text-muted-foreground" />
-        <h2 className="text-lg font-bold text-foreground tracking-tight">Plan Architecture</h2>
-      </div>
 
-      <div className="mb-12 overflow-x-auto rounded-3xl border border-border bg-card">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <th className="px-8 py-5 text-xs font-black uppercase tracking-widest text-muted-foreground">Feature</th>
-              <th className="px-8 py-5 text-xs font-black uppercase tracking-widest text-muted-foreground">Free Tier</th>
-              <th className="px-8 py-5 text-xs font-black uppercase tracking-widest text-info">Pro Account</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {[
-              { f: "Daily Credits", free: "20", pro: "Unlimited Refills" },
-              { f: "Credit Carry-over", free: "Max 30", pro: "Max 250" },
-              { f: "Competitor Limit", free: "2 per thread", pro: "5 per thread" },
-              { f: "Agent Logic", free: "Standard", pro: "Priority Llama 3.3" },
-              { f: "Scan Interval", free: "Min 1 hr", pro: "Min 1 min" },
-              { f: "Custom Reports", free: "Standard", pro: "Executive PDF Export" },
-            ].map((row, i) => (
-              <tr key={i} className="group transition-colors hover:bg-muted/10">
-                <td className="px-8 py-4 text-sm font-medium text-foreground">{row.f}</td>
-                <td className="px-8 py-4 text-sm text-muted-foreground">{row.free}</td>
-                <td className="px-8 py-4 text-sm font-bold text-info">{row.pro}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
 
       {/* ─── Recent signals indicator ───────────────────────────────── */}
       <div className="mt-12 rounded-3xl border border-divider-20 bg-muted/10 p-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">

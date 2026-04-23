@@ -59,6 +59,7 @@ const navItems = [
 export function Sidebar({ isMobileOpen, setIsMobileOpen }: SidebarProps = {}) {
   const pathname = usePathname()
   const [credits, setCredits] = useState<number | null>(null)
+  const [maxCredits, setMaxCredits] = useState<number>(30)
   const [plan, setPlan] = useState<string>("free")
 
   useEffect(() => {
@@ -77,6 +78,7 @@ export function Sidebar({ isMobileOpen, setIsMobileOpen }: SidebarProps = {}) {
         if (!data.error) {
           setCredits(data.credits)
           setPlan(data.plan_type)
+          if (data.max_credits) setMaxCredits(data.max_credits)
         }
       } catch (e) {
         console.error("Failed to fetch user credits", e)
@@ -96,8 +98,12 @@ export function Sidebar({ isMobileOpen, setIsMobileOpen }: SidebarProps = {}) {
         {/* Logo */}
         <div className="flex h-16 items-center border-b border-border px-6 justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground">
-              <Hexagon className="h-5 w-5 text-background" strokeWidth={2.5} />
+            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-muted/20">
+              <img 
+                src="/icon_main.png" 
+                alt="MirrorAI Logo" 
+                className="h-full w-full object-cover"
+              />
             </div>
             <span className="text-xl font-semibold tracking-tight text-foreground">
               MirrorAI
@@ -165,12 +171,12 @@ export function Sidebar({ isMobileOpen, setIsMobileOpen }: SidebarProps = {}) {
                   "h-full transition-all duration-500",
                   (credits ?? 0) < 5 ? "bg-destructive" : (credits ?? 0) < 10 ? "bg-warning" : "bg-success"
                 )}
-                style={{ width: `${Math.min(100, ((credits ?? 0) / (plan === "pro" ? 250 : 30)) * 100)}%` }}
+                style={{ width: `${Math.min(100, ((credits ?? 0) / maxCredits) * 100)}%` }}
               />
             </div>
             <div className="flex items-center justify-between text-[10px]">
               <span className="font-bold text-foreground">{credits ?? 0} left</span>
-              <span className="text-muted-foreground">/ {plan === "pro" ? 250 : 30}</span>
+              <span className="text-muted-foreground">/ {maxCredits}</span>
             </div>
           </div>
         </div>

@@ -46,9 +46,18 @@ export function Navigation() {
           }`}
         >
           {/* Logo */}
-          <a href="#" className="flex items-center gap-2 group">
-            <span className={`font-display tracking-tight transition-all duration-500 ${isScrolled ? "text-xl text-foreground" : "text-2xl text-white"}`}>MirrorAI</span>
-            <span className={`font-mono transition-all duration-500 ${isScrolled ? "text-[10px] mt-0.5 text-muted-foreground" : "text-xs mt-1 text-white/60"}`}>β</span>
+          <a href="#" className="flex items-center gap-3 group">
+            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white/10 backdrop-blur-md">
+              <img 
+                src="/icon_main.png" 
+                alt="MirrorAI" 
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <div className="flex flex-col gap-0 leading-none">
+              <span className={`font-display tracking-tight transition-all duration-500 ${isScrolled ? "text-xl text-foreground" : "text-2xl text-white"}`}>MirrorAI</span>
+              <span className={`font-mono transition-all duration-500 ${isScrolled ? "text-[8px] text-muted-foreground" : "text-[10px] text-white/60"}`}>BETA</span>
+            </div>
           </a>
 
           {/* Desktop Navigation */}
